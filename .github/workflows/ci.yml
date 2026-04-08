@@ -1,4 +1,4 @@
-name: C CI
+name: CI Multiplataforma
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -6,6 +6,7 @@ env:
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -45,20 +46,48 @@ jobs:
         if: runner.os == 'macOS'
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui_portable
 
-      - name: Smoke test (Linux)
+      - name: Smoke test consola modo a (Linux)
         if: runner.os == 'Linux'
         run: |
           printf "a\neuro\n0\nsalir\n" | ./progvoraz
+
+      - name: Smoke test consola modo b (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp stock.txt stock.bak
+          printf "b\ndolar\n100\n0\nsalir\n" | ./progvoraz
+          mv stock.bak stock.txt
+
+      - name: Smoke test consola modo c (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp stock.txt stock.bak
+          printf "c\neuro\nanadir\n1\n1\nquitar\n1\n1\nvolver\nsalir\n" | ./progvoraz
+          mv stock.bak stock.txt
 
       - name: Smoke test GUI portable (Linux)
         if: runner.os == 'Linux'
         run: |
           printf "euro\nvolver\nsalir\n" | ./progvoraz_gui
 
-      - name: Smoke test (macOS)
+      - name: Smoke test consola modo a (macOS)
         if: runner.os == 'macOS'
         run: |
           printf "a\neuro\n0\nsalir\n" | ./progvoraz
+
+      - name: Smoke test consola modo b (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp stock.txt stock.bak
+          printf "b\ndolar\n100\n0\nsalir\n" | ./progvoraz
+          mv stock.bak stock.txt
+
+      - name: Smoke test consola modo c (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp stock.txt stock.bak
+          printf "c\neuro\nanadir\n1\n1\nquitar\n1\n1\nvolver\nsalir\n" | ./progvoraz
+          mv stock.bak stock.txt
 
       - name: Smoke test GUI portable (macOS)
         if: runner.os == 'macOS'
@@ -88,7 +117,7 @@ jobs:
         shell: pwsh
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui.exe -mwindows
 
-      - name: Smoke test (Windows)
+      - name: Smoke test consola modo a (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -98,6 +127,39 @@ jobs:
           0
           salir
           "@ | .\progvoraz.exe | Out-String
+
+      - name: Smoke test consola modo b (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item stock.txt stock.bak -Force
+          @"
+          b
+          dolar
+          100
+          0
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          Move-Item stock.bak stock.txt -Force
+
+      - name: Smoke test consola modo c (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item stock.txt stock.bak -Force
+          @"
+          c
+          euro
+          anadir
+          1
+          1
+          quitar
+          1
+          1
+          volver
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          Move-Item stock.bak stock.txt -Force
 
       - name: Smoke launch GUI (Windows)
         if: runner.os == 'Windows'
