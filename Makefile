@@ -1,9 +1,9 @@
 APP := progvoraz
-SRC := main.c vector_dinamico.c moneda_gestion.c bigint.c
+SRC := main.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp
 GUI_APP := progvoraz_gui
-GUI_SRC_WIN := gui_window.c moneda_gestion.c bigint.c
+GUI_SRC_WIN := gui_window.cpp moneda_gestion.cpp bigint.cpp
 GUI_SRC_MAC := gui_macos.swift
-GUI_SRC_PORTABLE := gui_portable.c moneda_gestion.c bigint.c
+GUI_SRC_PORTABLE := gui_portable.cpp moneda_gestion.cpp bigint.cpp
 
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic

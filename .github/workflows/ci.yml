@@ -21,15 +21,15 @@ jobs:
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz
 
       - name: Build GUI (Linux portable)
         if: runner.os == 'Linux'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.c moneda_gestion.c bigint.c -o progvoraz_gui
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz
 
       - name: Swift toolchain info (macOS)
         if: runner.os == 'macOS'
@@ -43,7 +43,7 @@ jobs:
 
       - name: Build GUI (macOS portable fallback)
         if: runner.os == 'macOS'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.c moneda_gestion.c bigint.c -o progvoraz_gui_portable
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui_portable
 
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
@@ -81,12 +81,12 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz.exe
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz.exe
 
       - name: Build GUI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.c moneda_gestion.c bigint.c -o progvoraz_gui.exe -mwindows
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui.exe -mwindows
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'

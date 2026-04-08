@@ -19,11 +19,11 @@ Proyecto de cambio de monedas reimplementado en C++ (toolchain g++), originalmen
 
 ## Nueva implementacion de gestion de moneda
 
-La logica de acceso y persistencia de monedas/stock se separo de main.c para mejorar mantenibilidad y pruebas.
+La logica de acceso y persistencia de monedas/stock se separo de main.cpp para mejorar mantenibilidad y pruebas.
 
 - moneda_gestion.h: interfaz publica de carga y persistencia.
-- moneda_gestion.c: implementacion de lectura de bloques por moneda y actualizacion de stock.
-- main.c: ahora orquesta UI y algoritmo voraz, delegando IO de moneda al nuevo modulo.
+- moneda_gestion.cpp: implementacion de lectura de bloques por moneda y actualizacion de stock.
+- main.cpp: ahora orquesta UI y algoritmo voraz, delegando IO de moneda al nuevo modulo.
 
 Funciones expuestas por el modulo:
 
@@ -71,14 +71,14 @@ En Linux esos comandos ejecutan GUI portable (panel administrador en terminal).
 ### Opcion 2: g++ directo
 
 ```bash
-g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz
 ./progvoraz
 ```
 
 En Windows:
 
 ```powershell
-g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz.exe
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz.exe
 .\progvoraz.exe
 ```
 
@@ -89,7 +89,7 @@ En Linux el ejecutable no usa extension `.exe`.
 Compilacion:
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c -o progvoraz
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz
 ```
 
 Ejecucion:
@@ -100,12 +100,12 @@ Ejecucion:
 
 ## Estructura relevante
 
-- main.c: logica principal y TUI en consola.
-- gui_window.c: interfaz grafica de ventana (Windows).
+- main.cpp: logica principal y TUI en consola.
+- gui_window.cpp: interfaz grafica de ventana (Windows).
 - gui_macos.swift: interfaz grafica nativa para macOS (Swift/AppKit).
-- gui_portable.c: interfaz GUI portable para Linux y otros Unix-like (panel administrador en terminal).
-- bigint.c / bigint.h: enteros de precision arbitraria.
-- moneda_gestion.c / moneda_gestion.h: carga y persistencia de monedas/stock.
+- gui_portable.cpp: interfaz GUI portable para Linux y otros Unix-like (panel administrador en terminal).
+- bigint.cpp / bigint.h: enteros de precision arbitraria.
+- moneda_gestion.cpp / moneda_gestion.h: carga y persistencia de monedas/stock.
 - monedas.txt: denominaciones por moneda.
 - stock.txt: stock por denominacion.
 - .github/workflows/ci.yml: pipeline de compilacion y prueba rapida.
@@ -129,7 +129,7 @@ El repositorio ya incluye configuracion nativa de VS Code en `.vscode/`:
 
 - `.vscode/tasks.json`: tareas de build y run para consola y GUI.
 - `.vscode/launch.json`: perfiles de depuracion para consola y GUI.
-- `.vscode/c_cpp_properties.json`: configuracion de IntelliSense para C11.
+- `.vscode/c_cpp_properties.json`: configuracion de IntelliSense para C++20.
 - `.vscode/extensions.json`: extensiones recomendadas.
 
 Flujo sugerido en VS Code:

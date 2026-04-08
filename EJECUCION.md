@@ -20,7 +20,7 @@ Tambien incluye:
 Comprobacion rapida de GCC:
 
 ```bash
-gcc --version
+g++ --version
 ```
 
 ## Compilar
@@ -66,7 +66,7 @@ make gui
 ### Compilar GUI en Windows (GCC directo)
 
 ```powershell
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 gui_window.c moneda_gestion.c bigint.c -o progvoraz_gui.exe -mwindows
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.cpp moneda_gestion.cpp bigint.cpp -o progvoraz_gui.exe -mwindows
 ```
 
 ### Ejecutar GUI en Windows
@@ -91,18 +91,18 @@ swiftc gui_macos.swift -o progvoraz_gui
 
 ### GUI portable en Linux (sin interfaz WinAPI)
 
-En Linux, `make gui` compila `gui_portable.c`, que ofrece un panel administrador en terminal con operaciones de anadir/quitar stock.
+En Linux, `make gui` compila `gui_portable.cpp`, que ofrece un panel administrador en terminal con operaciones de anadir/quitar stock.
 
 ### Opcion alternativa (GCC directo, Linux)
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c -o progvoraz
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz
 ```
 
 ### Opcion alternativa (GCC directo, Windows)
 
 ```powershell
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c -o progvoraz.exe
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz.exe
 ```
 
 ## Ejecutar

@@ -1,5 +1,5 @@
 /*
- * main.c
+ * main.cpp
  *
  * PROPOSITO GENERAL
  * -----------------
@@ -360,7 +360,7 @@ static int cambio(const BigInt *monto, const BigIntArray *denominaciones, BigInt
 static int cambio_stock(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion, BigIntArray *stock)
 {
     BigInt restante = {0};
-    BigIntArray stockTrabajo = {0};
+    BigIntArray stockTrabajo = {};
 
     if (monto == NULL || denominaciones == NULL || solucion == NULL || stock == NULL)
         return 0;
@@ -554,8 +554,8 @@ int main(void)
     char monedaCmd[MAX_MONEDA_NOMBRE + 1];
     int opcion = 0;
     int ejecutando = 1;
-    BigIntArray monedas = {0};
-    BigIntArray stock = {0};
+    BigIntArray monedas = {};
+    BigIntArray stock = {};
 
     while (ejecutando)
     {
@@ -765,7 +765,7 @@ int main(void)
                 BigInt cantidad = {0};
                 int estadoCantidad;
                 int resultado;
-                BigIntArray solucion = {0};
+                BigIntArray solucion = {};
 
                 estadoCantidad = pedir_cantidad(&cantidad);
                 if (estadoCantidad == -1)

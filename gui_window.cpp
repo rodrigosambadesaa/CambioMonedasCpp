@@ -43,8 +43,8 @@ static int g_monedasCount = 0;
 static int g_monedaActiva = -1;
 static int g_modo_stock_limitado = 1;
 
-static BigIntArray g_denom = {0};
-static BigIntArray g_stock = {0};
+static BigIntArray g_denom = {};
+static BigIntArray g_stock = {};
 
 static int es_numero(const char *s)
 {
@@ -380,8 +380,8 @@ static int leer_monto_cambio(BigInt *monto)
 static int calcular_y_mostrar_cambio(void)
 {
     BigInt monto = {0};
-    BigIntArray solucion = {0};
-    BigIntArray stock_nuevo = {0};
+    BigIntArray solucion = {};
+    BigIntArray stock_nuevo = {};
     char linea[512];
     int hay_items = 0;
     int max_chars = 0;
@@ -794,7 +794,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
-    WNDCLASSA wc = {0};
+    WNDCLASSA wc = {};
     HWND hwnd;
     MSG msg;
 

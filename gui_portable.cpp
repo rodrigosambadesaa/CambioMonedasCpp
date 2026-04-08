@@ -164,8 +164,8 @@ int main(void)
     {
         char entrada[128];
         char cmd[128];
-        BigIntArray denom = {0};
-        BigIntArray stock = {0};
+        BigIntArray denom = {};
+        BigIntArray stock = {};
         int idxMoneda = -1;
 
         printf("\nMonedas disponibles:\n");
