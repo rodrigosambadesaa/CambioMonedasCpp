@@ -1,5 +1,8 @@
 name: C CI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
   pull_request:
@@ -9,26 +12,81 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
 
+      - name: Build GUI (Linux portable)
+        if: runner.os == 'Linux'
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.c moneda_gestion.c bigint.c -o progvoraz_gui
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
+
+      - name: Swift toolchain info (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          xcode-select -p
+          xcrun swift --version
+
+      - name: Build GUI (macOS Swift)
+        if: runner.os == 'macOS'
+        run: xcrun --sdk macosx swiftc -parse-as-library gui_macos.swift -o progvoraz_gui_swift
+
+      - name: Build GUI (macOS portable fallback)
+        if: runner.os == 'macOS'
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.c moneda_gestion.c bigint.c -o progvoraz_gui_portable
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
-          printf "a\neuro\n0\n" | ./progvoraz
+          printf "a\neuro\n0\nsalir\n" | ./progvoraz
+
+      - name: Smoke test GUI portable (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf "euro\nvolver\nsalir\n" | ./progvoraz_gui
+
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          printf "a\neuro\n0\nsalir\n" | ./progvoraz
+
+      - name: Smoke test GUI portable (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          printf "euro\nvolver\nsalir\n" | ./progvoraz_gui_portable
+
+      - name: Smoke launch GUI Swift (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ./progvoraz_gui_swift >/tmp/progvoraz_gui_swift.log 2>&1 &
+          GUI_PID=$!
+          sleep 3
+          if ! kill -0 "$GUI_PID" 2>/dev/null; then
+            echo "La GUI Swift termino prematuramente."
+            cat /tmp/progvoraz_gui_swift.log
+            exit 1
+          fi
+          kill "$GUI_PID"
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz.exe
+
+      - name: Build GUI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.c moneda_gestion.c bigint.c -o progvoraz_gui.exe -mwindows
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
@@ -38,4 +96,19 @@ jobs:
           a
           euro
           0
+          salir
           "@ | .\progvoraz.exe | Out-String
+
+      - name: Smoke launch GUI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath .\progvoraz_gui.exe -PassThru
+          Start-Sleep -Seconds 3
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+            throw "La GUI de Windows termino prematuramente con codigo $($proc.ExitCode)."
+          }
+          if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id
+          }
+

@@ -1,6 +1,6 @@
 # ProgVoraz
 
-Proyecto de cambio de monedas escrito en C, originalmente creado en 2014 con NetBeans y actualizado para un flujo moderno orientado a GitHub.
+Proyecto de cambio de monedas reimplementado en C++ (toolchain g++), originalmente creado en 2014 con NetBeans y actualizado para un flujo moderno orientado a GitHub.
 
 ## Que hace
 
@@ -12,7 +12,7 @@ Proyecto de cambio de monedas escrito en C, originalmente creado en 2014 con Net
 ## Modernizacion aplicada
 
 - Build simplificado y portable mediante Makefile de una sola capa.
-- CI automatizada en GitHub Actions para Linux y Windows.
+- CI automatizada en GitHub Actions para Linux, macOS y Windows.
 - Limpieza de artefactos con .gitignore para evitar ruido en commits.
 - Documentacion de uso y compilacion actualizada.
 - Modularizacion de la gestion de moneda en un modulo dedicado.
@@ -40,7 +40,7 @@ La persistencia de stock mantiene el enfoque sin archivos temporales:
 
 ## Requisitos
 
-- GCC en PATH.
+- g++ en PATH.
 - Archivos monedas.txt y stock.txt en la raiz del proyecto.
 
 ## Compilar y ejecutar
@@ -68,17 +68,17 @@ make run-gui
 En macOS esos comandos ejecutan GUI nativa Swift/AppKit.
 En Linux esos comandos ejecutan GUI portable (panel administrador en terminal).
 
-### Opcion 2: GCC directo
+### Opcion 2: g++ directo
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c -o progvoraz
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
 ./progvoraz
 ```
 
 En Windows:
 
 ```powershell
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c -o progvoraz.exe
+g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz.exe
 .\progvoraz.exe
 ```
 
@@ -103,7 +103,7 @@ Ejecucion:
 - main.c: logica principal y TUI en consola.
 - gui_window.c: interfaz grafica de ventana (Windows).
 - gui_macos.swift: interfaz grafica nativa para macOS (Swift/AppKit).
-- gui_portable.c: interfaz GUI portable para Linux (panel administrador en terminal).
+- gui_portable.c: interfaz GUI portable para Linux y otros Unix-like (panel administrador en terminal).
 - bigint.c / bigint.h: enteros de precision arbitraria.
 - moneda_gestion.c / moneda_gestion.h: carga y persistencia de monedas/stock.
 - monedas.txt: denominaciones por moneda.

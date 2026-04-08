@@ -137,8 +137,16 @@ int main(void)
     const char *so = "macOS";
 #elif defined(__linux__)
     const char *so = "Linux";
+#elif defined(__FreeBSD__)
+    const char *so = "FreeBSD";
+#elif defined(__OpenBSD__)
+    const char *so = "OpenBSD";
+#elif defined(__NetBSD__)
+    const char *so = "NetBSD";
+#elif defined(__sun)
+    const char *so = "Solaris";
 #else
-    const char *so = "SO no Windows";
+    const char *so = "Unix-like";
 #endif
     char monedas[MAX_MONEDAS][MAX_NOMBRE];
     int nMonedas = 0;
@@ -315,4 +323,3 @@ int main(void)
     return 0;
 }
 #endif
-
