@@ -14,6 +14,28 @@ Proyecto de cambio de monedas escrito en C, originalmente creado en 2014 con Net
 - CI automatizada en GitHub Actions para Linux y Windows.
 - Limpieza de artefactos con .gitignore para evitar ruido en commits.
 - Documentacion de uso y compilacion actualizada.
+- Modularizacion de la gestion de moneda en un modulo dedicado.
+
+## Nueva implementacion de gestion de moneda
+
+La logica de acceso y persistencia de monedas/stock se separo de main.c para mejorar mantenibilidad y pruebas.
+
+- monedagestion.h: interfaz publica de carga y persistencia.
+- monedagestion.c: implementacion de lectura de bloques por moneda y actualizacion de stock.
+- main.c: ahora orquesta UI y algoritmo voraz, delegando IO de moneda al nuevo modulo.
+
+Funciones expuestas por el modulo:
+
+- cargarDenominacionesMoneda(nombreMoneda, &resultado)
+- cargarStockMoneda(nombreMoneda, &resultado)
+- actualizarStockMoneda(nombreMoneda, stock)
+
+La persistencia de stock mantiene el enfoque sin archivos temporales:
+
+1. Abre stock.txt en modo lectura/escritura (r+).
+2. Carga lineas en memoria.
+3. Reemplaza la seccion de la moneda objetivo.
+4. Reescribe el mismo archivo y trunca el remanente.
 
 ## Requisitos
 
@@ -38,14 +60,31 @@ make release
 ### Opcion 2: GCC directo
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c monedagestion.c bigint.c -o progvoraz
+./progvoraz
 ```
 
 En Windows:
 
 ```powershell
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz.exe
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c monedagestion.c bigint.c -o progvoraz.exe
 .\progvoraz.exe
+```
+
+### Ejecucion en Linux
+
+En Linux el ejecutable no usa extension `.exe`.
+
+Compilacion:
+
+```bash
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c monedagestion.c bigint.c -o progvoraz
+```
+
+Ejecucion:
+
+```bash
+./progvoraz
 ```
 
 ## Estructura relevante

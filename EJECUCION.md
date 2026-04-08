@@ -9,14 +9,14 @@ Tambien incluye una interfaz grafica de consola (TUI) con cabecera, menu y resul
 
 ## Requisitos
 
-- Windows con GCC disponible en `PATH`.
+- GCC disponible en `PATH` (Windows o Linux).
 - Archivos de datos en la carpeta del proyecto:
   - `monedas.txt`
   - `stock.txt`
 
-Comprobacion rapida de GCC en PowerShell:
+Comprobacion rapida de GCC:
 
-```powershell
+```bash
 gcc --version
 ```
 
@@ -36,13 +36,27 @@ Compilacion optimizada:
 make release
 ```
 
-### Opcion alternativa (GCC directo)
+### Opcion alternativa (GCC directo, Linux)
+
+```bash
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c monedagestion.c bigint.c -o progvoraz
+```
+
+### Opcion alternativa (GCC directo, Windows)
 
 ```powershell
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz.exe
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c monedagestion.c bigint.c -o progvoraz.exe
 ```
 
 ## Ejecutar
+
+Linux:
+
+```bash
+./progvoraz
+```
+
+Windows:
 
 ```powershell
 .\progvoraz.exe
@@ -76,6 +90,14 @@ dolar
 "@ | .\progvoraz.exe
 ```
 
+## Ejemplo de prueba automatizada (Linux Bash)
+
+Ejecuta una sesion en modo `b`, moneda `dolar`, cantidad `100` y luego sale:
+
+```bash
+printf 'b\ndolar\n100\n0\n' | ./progvoraz
+```
+
 ## Formato esperado de datos
 
 ### monedas.txt
@@ -107,5 +129,5 @@ Mismo orden de bloques que `monedas.txt`:
 - Se corrigio la lectura de archivos para evitar errores por uso de `feof`.
 - Se corrigieron validaciones de limites en el vector dinamico.
 - Se agrego validacion de entrada para opcion y cantidad.
-- La actualizacion de stock usa archivo temporal y copia segura a `stock.txt`.
+- La actualizacion de stock reescribe `stock.txt` en el mismo archivo abierto (`r+`) sin temporales.
 - Se modernizo el flujo para GitHub con `Makefile`, `.gitignore` y CI en `.github/workflows/ci.yml`.

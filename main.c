@@ -3,522 +3,615 @@
  *
  * PROPOSITO GENERAL
  * -----------------
- * Este modulo contiene el flujo completo de la aplicacion:
- * 1) Interfaz de consola (TUI simple con menu y cabeceras).
- * 2) Lectura robusta de configuracion de monedas y stock desde archivos.
- * 3) Calculo voraz del cambio en dos modos:
- *    - modo infinito (sin limite de stock)
- *    - modo limitado (descuenta stock disponible)
- * 4) Persistencia del stock actualizado en disco.
- *
- * DISEnO
- * ------
- * - Las funciones son static para limitar su alcance a este archivo.
- * - Se usa validacion defensiva en entradas de usuario y lectura de archivos.
- * - El vector dinamico (vectorP) abstrae el manejo de arreglos de enteros.
+ * Aplicacion de cambio de monedas con soporte para enteros de tamano arbitrario.
+ * Toda la aritmetica de montos, denominaciones, stock y cantidades se realiza
+ * mediante BigInt (enteros no negativos sin limite practico de digitos).
  */
 
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "vectordinamico.h"
+#include "bigint.h"
+#include "monedagestion.h"
 
-#define MAX_TOKEN 64
 #define MAX_MONEDA_NOMBRE 20
-#define MAX_DENOMINACIONES 64
 
-/* Limpia la consola y posiciona el cursor arriba a la izquierda (ANSI). */
 static void limpiarPantalla(void)
 {
     printf("\033[2J\033[H");
 }
 
-/* Dibuja una linea horizontal para estructurar visualmente la TUI. */
 static void dibujarLinea(void)
 {
     printf("+--------------------------------------------------+\n");
 }
 
-/* Pinta cabecera principal del programa. */
 static void dibujarTitulo(void)
 {
-    /* Primero se limpia para evitar residuos visuales de ejecuciones previas. */
     limpiarPantalla();
-    /* Luego se renderiza marco y titulo. */
     dibujarLinea();
     printf("|          SISTEMA DE CAMBIO DE MONEDAS            |\n");
     dibujarLinea();
 }
 
-/*
- * Convierte un texto a entero largo y valida que toda la cadena sea numerica.
- * Devuelve 1 si la conversion es valida, 0 en caso contrario.
- */
-static int esNumeroEntero(const char *texto, long *valor)
-{
-    char *fin;
-    long leido;
-
-    /* Rechaza puntero nulo o cadena vacia. */
-    if (texto == NULL || *texto == '\0')
-        return 0;
-
-    /* strtol deja en 'fin' el primer caracter no convertido. */
-    leido = strtol(texto, &fin, 10);
-    /* Si no consumio toda la cadena, habia caracteres invalidos. */
-    if (*fin != '\0')
-        return 0;
-
-    /* Entrega el valor convertido al llamador. */
-    *valor = leido;
-    return 1;
-}
-
-/*
- * Copia un archivo de texto caracter a caracter.
- * Se usa para reemplazar stock.txt desde un temporal de forma segura.
- */
-static int copiarArchivo(const char *origen, const char *destino)
-{
-    FILE *entrada = fopen(origen, "r");
-    FILE *salida = fopen(destino, "w");
-    int c;
-
-    /* Si cualquiera de los dos archivos falla, se cierra lo que este abierto. */
-    if (entrada == NULL || salida == NULL)
-    {
-        if (entrada != NULL)
-            fclose(entrada);
-        if (salida != NULL)
-            fclose(salida);
-        return 0;
-    }
-
-    /* Copia secuencial hasta fin de archivo. */
-    while ((c = fgetc(entrada)) != EOF)
-        fputc(c, salida);
-
-    /* Cierre ordenado de ambos descriptores. */
-    fclose(entrada);
-    fclose(salida);
-    return 1;
-}
-
-/*
- * Carga valores asociados a una moneda desde un archivo de bloques.
- * Formato esperado de archivo:
- *   nombre_moneda
- *   valor1
- *   valor2
- *   ...
- *   siguiente_moneda
- *   ...
- *
- * Si convertirMenosUnoACero == 1, el valor -1 se transforma a 0
- * (util para stock, donde -1 significa sin unidades disponibles).
- */
-static int cargarDatosMoneda(const char *archivo, const char *nombre, int convertirMenosUnoACero, vectorP *resultado)
-{
-    FILE *fp = fopen(archivo, "r");
-    char token[MAX_TOKEN];
-    TELEMENTO valores[MAX_DENOMINACIONES];
-    unsigned long cantidad = 0;
-    int enSeccion = 0;
-
-    /* Sin archivo no hay datos que cargar. */
-    if (fp == NULL)
-        return 0;
-
-    /* Lee token a token para tolerar saltos de linea/espacios. */
-    while (fscanf(fp, "%63s", token) == 1)
-    {
-        long numero;
-        if (!enSeccion)
-        {
-            /* Busca el encabezado de la moneda solicitada. */
-            if (strcmp(token, nombre) == 0)
-                enSeccion = 1;
-            continue;
-        }
-
-        /* Cuando deja de ser numero, termino la seccion de esa moneda. */
-        if (!esNumeroEntero(token, &numero))
-            break;
-
-        /* Normaliza el indicador de falta de stock. */
-        if (convertirMenosUnoACero && numero == -1)
-            numero = 0;
-
-        /* Evita desbordar el arreglo temporal local. */
-        if (cantidad >= MAX_DENOMINACIONES)
-            break;
-
-        /* Guarda valor y avanza contador. */
-        valores[cantidad] = (TELEMENTO)numero;
-        cantidad++;
-    }
-
-    fclose(fp);
-
-    /* Si no encontro la seccion o no obtuvo datos, falla. */
-    if (!enSeccion || cantidad == 0)
-        return 0;
-
-    /* Reserva vector dinamico de salida con el tamano exacto. */
-    crear(resultado, cantidad);
-    if (*resultado == NULL)
-        return 0;
-
-    /* Copia de buffer temporal a vector dinamico definitivo. */
-    for (unsigned long i = 0; i < cantidad; i++)
-        asignar(*resultado, i, valores[i]);
-
-    return 1;
-}
-
-/*
- * Reescribe el bloque de una moneda en stock.txt usando stock.tmp.
- * Pasos:
- * 1) Lee stock.txt y escribe stock.tmp.
- * 2) Al detectar la moneda objetivo, reemplaza sus valores por los de 'stock'.
- * 3) Si todo va bien, copia stock.tmp -> stock.txt y borra temporal.
- */
-static int actualizarStockArchivo(const char *nombre, vectorP stock)
-{
-    FILE *entrada = fopen("stock.txt", "r");
-    FILE *salida = fopen("stock.tmp", "w");
-    char token[MAX_TOKEN];
-    int actualizado = 0;
-    unsigned long i;
-
-    /* Verifica aperturas y cierra recursos parciales si algo falla. */
-    if (entrada == NULL || salida == NULL)
-    {
-        if (entrada != NULL)
-            fclose(entrada);
-        if (salida != NULL)
-            fclose(salida);
-        return 0;
-    }
-
-    /* Recorre tokens del archivo original y los replica en temporal. */
-    while (fscanf(entrada, "%63s", token) == 1)
-    {
-        if (!actualizado && strcmp(token, nombre) == 0)
-        {
-            /* Copia el encabezado de moneda. */
-            fprintf(salida, "%s\n", token);
-
-            /* Sustituye cada linea de stock por el estado actual en memoria. */
-            for (i = 0; i < tamano(&stock); i++)
-            {
-                if (fscanf(entrada, "%63s", token) != 1)
-                    break;
-                /* Mantiene compatibilidad: 0 unidades se guarda como -1. */
-                if (recuperar(stock, i) <= 0)
-                    fprintf(salida, "-1\n");
-                else
-                    fprintf(salida, "%d\n", recuperar(stock, i));
-            }
-            /* Marca que ya actualizo la moneda, para no repetir. */
-            actualizado = 1;
-        }
-        else
-        {
-            /* Tokens fuera de la seccion objetivo se copian tal cual. */
-            fprintf(salida, "%s\n", token);
-        }
-    }
-
-    fclose(entrada);
-    fclose(salida);
-
-    /* Si no encontro la moneda, elimina temporal y reporta fallo. */
-    if (!actualizado)
-    {
-        remove("stock.tmp");
-        return 0;
-    }
-
-    /* Aplica reemplazo logico del archivo principal. */
-    if (!copiarArchivo("stock.tmp", "stock.txt"))
-        return 0;
-
-    /* Limpia temporal al finalizar. */
-    if (remove("stock.tmp") != 0)
-        return 0;
-
-    return 1;
-}
-
-/*
- * Algoritmo voraz de cambio sin restriccion de stock.
- * Recorre denominaciones en orden y toma tantas como pueda de cada una.
- */
-static int cambio(int x, vectorP valor, vectorP *solucion)
-{
-    unsigned long i = 0;
-    int suma = 0;
-
-    /* Crea vector de cantidades por denominacion (inicia en 0). */
-    crear(solucion, tamano(&valor));
-    if (*solucion == NULL)
-        return 0;
-
-    /* Intenta construir x acumulando monedas vorazmente. */
-    while (suma < x && i < tamano(&valor))
-    {
-        TELEMENTO aux = recuperar(valor, i);
-        if (suma + aux <= x)
-        {
-            /* Toma una moneda de esta denominacion. */
-            asignar(*solucion, i, recuperar(*solucion, i) + 1);
-            suma += aux;
-        }
-        else
-        {
-            /* Pasa a la siguiente denominacion. */
-            i++;
-        }
-    }
-
-    /* Exito solo si se alcanza exactamente x. */
-    if (suma == x)
-        return 1;
-
-    /* Si falla, deja solucion explicitamente en ceros. */
-    for (i = 0; i < tamano(&valor); i++)
-        asignar(*solucion, i, 0);
-    return 0;
-}
-
-/*
- * Variante voraz con stock limitado.
- * Igual que cambio(), pero ademas descuenta cada moneda usada del stock.
- */
-static int cambioStock(int x, vectorP valor, vectorP *solucion, vectorP stock)
-{
-    unsigned long i = 0;
-    int suma = 0;
-
-    /* Inicializa solucion a 0 para todas las denominaciones. */
-    crear(solucion, tamano(&valor));
-    if (*solucion == NULL)
-        return 0;
-
-    /* Recorre denominaciones respetando disponibilidad. */
-    while (suma < x && i < tamano(&valor))
-    {
-        TELEMENTO aux = recuperar(valor, i);
-        TELEMENTO disponible = recuperar(stock, i);
-        if (suma + aux <= x && disponible > 0)
-        {
-            /* Usa una moneda y descuenta stock. */
-            asignar(*solucion, i, recuperar(*solucion, i) + 1);
-            asignar(stock, i, disponible - 1);
-            suma += aux;
-        }
-        else
-        {
-            /* Sin hueco o sin stock: siguiente denominacion. */
-            i++;
-        }
-    }
-
-    /* Exito solo si suma exacta. */
-    if (suma == x)
-        return 1;
-
-    /* En fallo, deja solucion en ceros (stock ya no se usa para persistir). */
-    for (i = 0; i < tamano(&valor); i++)
-        asignar(*solucion, i, 0);
-    return 0;
-}
-
-/*
- * Lee una linea de stdin y elimina salto de linea final.
- * Devuelve 1 si pudo leer, 0 si hubo EOF/error.
- */
 static int leerLinea(char *buffer, size_t tam)
 {
     if (fgets(buffer, (int)tam, stdin) == NULL)
         return 0;
 
-    /* Reemplaza \r o \n por terminador de cadena. */
     buffer[strcspn(buffer, "\r\n")] = '\0';
     return 1;
 }
 
+static void aMinusculas(char *texto)
+{
+    size_t i;
+
+    if (texto == NULL)
+        return;
+
+    for (i = 0; texto[i] != '\0'; i++)
+        texto[i] = (char)tolower((unsigned char)texto[i]);
+}
+
+/*
+ * Normaliza texto de clave para comparacion con archivos:
+ * - pasa a minusculas
+ * - elimina acentos comunes (UTF-8 y Latin-1/CP1252)
+ */
+static void normalizarClave(const char *origen, char *destino, size_t tamDestino)
+{
+    size_t i = 0;
+    size_t j = 0;
+
+    if (destino == NULL || tamDestino == 0)
+        return;
+
+    destino[0] = '\0';
+    if (origen == NULL)
+        return;
+
+    while (origen[i] != '\0' && j + 1 < tamDestino)
+    {
+        unsigned char c = (unsigned char)origen[i];
+
+        if (c == 0xC3 && origen[i + 1] != '\0')
+        {
+            unsigned char s = (unsigned char)origen[i + 1];
+            char reemplazo = '\0';
+
+            if (s == 0xA1 || s == 0x81)
+                reemplazo = 'a';
+            else if (s == 0xA9 || s == 0x89)
+                reemplazo = 'e';
+            else if (s == 0xAD || s == 0x8D)
+                reemplazo = 'i';
+            else if (s == 0xB3 || s == 0x93)
+                reemplazo = 'o';
+            else if (s == 0xBA || s == 0x9A || s == 0xBC || s == 0x9C)
+                reemplazo = 'u';
+            else if (s == 0xB1 || s == 0x91)
+                reemplazo = 'n';
+
+            if (reemplazo != '\0')
+            {
+                destino[j++] = reemplazo;
+                i += 2;
+                continue;
+            }
+        }
+
+        if (c == 0xE1 || c == 0xC1 || c == 0xA0)
+            destino[j++] = 'a';
+        else if (c == 0xE9 || c == 0xC9 || c == 0x82 || c == 0x90)
+            destino[j++] = 'e';
+        else if (c == 0xED || c == 0xCD || c == 0xA1 || c == 0xD6)
+            destino[j++] = 'i';
+        else if (c == 0xF3 || c == 0xD3 || c == 0xA2 || c == 0xE0)
+            destino[j++] = 'o';
+        else if (c == 0xFA || c == 0xDA || c == 0xFC || c == 0xDC || c == 0xA3 || c == 0x81 || c == 0x9A)
+            destino[j++] = 'u';
+        else if (c == 0xF1 || c == 0xD1 || c == 0xA4 || c == 0xA5)
+            destino[j++] = 'n';
+        else
+            destino[j++] = (char)tolower(c);
+
+        i++;
+    }
+
+    destino[j] = '\0';
+}
+
 /*
  * Muestra menu inicial y devuelve opcion normalizada en minuscula.
- * Retorna 0 si la lectura falla o si no se ingreso nada.
+ * Retorna:
+ * - 'a' o 'b' si la entrada es valida
+ * - 0 si la entrada es invalida/vacia
+ * - -1 si hubo EOF/error de lectura
+ * - -2 si usuario pide salir
  */
 static int pedirOpcion(void)
 {
     char buffer[16];
+    char comando[16];
 
-    /* Dibuja interfaz de entrada. */
     dibujarTitulo();
     printf("| Elija modo de trabajo:                            |\n");
     printf("|   a) Monedas infinitas                            |\n");
     printf("|   b) Monedas limitadas (usa stock)                |\n");
     dibujarLinea();
-    printf("Opcion: ");
+    printf("Opcion (o 'salir'): ");
 
     if (!leerLinea(buffer, sizeof(buffer)))
-        return 0;
+        return -1;
 
-    /* Si esta vacio, se considera invalido. */
     if (buffer[0] == '\0')
         return 0;
 
-    /* tolower evita problemas de 'A'/'B'. */
+    strncpy(comando, buffer, sizeof(comando) - 1);
+    comando[sizeof(comando) - 1] = '\0';
+    aMinusculas(comando);
+    if (strcmp(comando, "salir") == 0)
+        return -2;
+
     return (int)tolower((unsigned char)buffer[0]);
 }
 
 /*
- * Solicita cantidad en centimos.
- * Devuelve:
- * - cantidad valida >= 0
- * -1 si entrada invalida
+ * Solicita monto y lo parsea como BigInt.
+ * Retorna:
+ * - 1 si lectura valida
+ * - 0 si entrada invalida
+ * - -1 si EOF/error
+ * - 2 si usuario pide volver a seleccion de moneda ("0" o "volver")
+ * - 3 si usuario pide salir
  */
-static int pedirCantidad(void)
+static int pedirCantidad(BigInt *cantidad)
 {
-    char buffer[32];
-    long valor;
+    char buffer[2048];
+    char comando[2048];
+    BigInt tmp = {0};
 
-    printf("Cantidad en centimos (0 para salir): ");
+    printf("Cantidad en centimos (0, volver o salir): ");
     if (!leerLinea(buffer, sizeof(buffer)))
         return -1;
 
-    /* Valida formato numerico y rango razonable para evitar overflow logico. */
-    if (!esNumeroEntero(buffer, &valor) || valor < 0 || valor > 1000000)
-        return -1;
+    if (buffer[0] == '\0')
+        return 0;
 
-    return (int)valor;
+    strncpy(comando, buffer, sizeof(comando) - 1);
+    comando[sizeof(comando) - 1] = '\0';
+    aMinusculas(comando);
+
+    if (strcmp(comando, "salir") == 0)
+        return 3;
+
+    if (strcmp(comando, "volver") == 0 || strcmp(comando, "0") == 0)
+        return 2;
+
+    if (!bigint_init(&tmp, buffer))
+        return 0;
+
+    bigint_free(cantidad);
+    *cantidad = tmp;
+    return 1;
 }
 
-/* Imprime tabla de resultado final, opcionalmente incluyendo stock remanente. */
-static void imprimirResultado(vectorP monedas, vectorP solucion, vectorP stock, int usarStock)
+static int copiarArregloBigInt(const BigIntArray *origen, BigIntArray *destino)
 {
-    unsigned long i;
+    if (origen == NULL || destino == NULL)
+        return 0;
 
+    if (!bigint_array_create(destino, origen->len))
+        return 0;
+
+    for (size_t i = 0; i < origen->len; i++)
+    {
+        if (!bigint_array_set(destino, i, &origen->items[i]))
+        {
+            bigint_array_free(destino);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static void limpiarArreglo(BigIntArray *arr)
+{
+    if (arr != NULL)
+        bigint_array_free(arr);
+}
+
+static int cambio(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion)
+{
+    BigInt restante = {0};
+
+    if (monto == NULL || denominaciones == NULL || solucion == NULL)
+        return 0;
+
+    if (!bigint_array_create(solucion, denominaciones->len))
+        return 0;
+
+    if (!bigint_set(&restante, monto) && !bigint_init(&restante, monto->digits))
+    {
+        limpiarArreglo(solucion);
+        return 0;
+    }
+
+    for (size_t i = 0; i < denominaciones->len; i++)
+    {
+        BigInt q = {0};
+        BigInt r = {0};
+
+        if (bigint_is_zero(&denominaciones->items[i]))
+            continue;
+
+        if (!bigint_divmod(&restante, &denominaciones->items[i], &q, &r))
+        {
+            bigint_free(&q);
+            bigint_free(&r);
+            bigint_free(&restante);
+            limpiarArreglo(solucion);
+            return 0;
+        }
+
+        if (!bigint_array_set(solucion, i, &q))
+        {
+            bigint_free(&q);
+            bigint_free(&r);
+            bigint_free(&restante);
+            limpiarArreglo(solucion);
+            return 0;
+        }
+
+        bigint_free(&restante);
+        restante = r;
+        bigint_free(&q);
+
+        if (bigint_is_zero(&restante))
+            break;
+    }
+
+    {
+        int exito = bigint_is_zero(&restante);
+        bigint_free(&restante);
+        return exito;
+    }
+}
+
+static int cambioStock(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion, BigIntArray *stock)
+{
+    BigInt restante = {0};
+    BigIntArray stockTrabajo = {0};
+
+    if (monto == NULL || denominaciones == NULL || solucion == NULL || stock == NULL)
+        return 0;
+    if (denominaciones->len != stock->len)
+        return 0;
+
+    if (!bigint_array_create(solucion, denominaciones->len))
+        return 0;
+
+    if (!copiarArregloBigInt(stock, &stockTrabajo))
+    {
+        limpiarArreglo(solucion);
+        return 0;
+    }
+
+    if (!bigint_set(&restante, monto) && !bigint_init(&restante, monto->digits))
+    {
+        limpiarArreglo(solucion);
+        limpiarArreglo(&stockTrabajo);
+        return 0;
+    }
+
+    for (size_t i = 0; i < denominaciones->len; i++)
+    {
+        BigInt maxUsables = {0};
+        BigInt r = {0};
+        BigInt tomar = {0};
+
+        if (bigint_is_zero(&denominaciones->items[i]))
+            continue;
+
+        if (!bigint_divmod(&restante, &denominaciones->items[i], &maxUsables, &r))
+            goto fallo;
+
+        if (bigint_compare(&maxUsables, &stockTrabajo.items[i]) > 0)
+        {
+            if (!bigint_set(&tomar, &stockTrabajo.items[i]) && !bigint_init(&tomar, stockTrabajo.items[i].digits))
+                goto fallo;
+        }
+        else
+        {
+            if (!bigint_set(&tomar, &maxUsables) && !bigint_init(&tomar, maxUsables.digits))
+                goto fallo;
+        }
+
+        if (!bigint_array_set(solucion, i, &tomar))
+            goto fallo;
+
+        if (!bigint_is_zero(&tomar))
+        {
+            BigInt uso = {0};
+            BigInt nuevoRestante = {0};
+            BigInt nuevoStock = {0};
+
+            if (!bigint_multiply(&denominaciones->items[i], &tomar, &uso))
+            {
+                bigint_free(&uso);
+                goto fallo;
+            }
+
+            if (!bigint_subtract(&restante, &uso, &nuevoRestante))
+            {
+                bigint_free(&uso);
+                bigint_free(&nuevoRestante);
+                goto fallo;
+            }
+
+            if (!bigint_subtract(&stockTrabajo.items[i], &tomar, &nuevoStock))
+            {
+                bigint_free(&uso);
+                bigint_free(&nuevoRestante);
+                bigint_free(&nuevoStock);
+                goto fallo;
+            }
+
+            bigint_free(&restante);
+            restante = nuevoRestante;
+
+            if (!bigint_set(&stockTrabajo.items[i], &nuevoStock))
+            {
+                bigint_free(&uso);
+                bigint_free(&nuevoStock);
+                goto fallo;
+            }
+
+            bigint_free(&uso);
+            bigint_free(&nuevoStock);
+        }
+
+        bigint_free(&maxUsables);
+        bigint_free(&r);
+        bigint_free(&tomar);
+
+        if (bigint_is_zero(&restante))
+            break;
+
+        continue;
+
+    fallo:
+        bigint_free(&maxUsables);
+        bigint_free(&r);
+        bigint_free(&tomar);
+        bigint_free(&restante);
+        limpiarArreglo(solucion);
+        limpiarArreglo(&stockTrabajo);
+        return 0;
+    }
+
+    if (!bigint_is_zero(&restante))
+    {
+        bigint_free(&restante);
+        limpiarArreglo(solucion);
+        limpiarArreglo(&stockTrabajo);
+        return 0;
+    }
+
+    for (size_t i = 0; i < stock->len; i++)
+    {
+        if (!bigint_array_set(stock, i, &stockTrabajo.items[i]))
+        {
+            bigint_free(&restante);
+            limpiarArreglo(solucion);
+            limpiarArreglo(&stockTrabajo);
+            return 0;
+        }
+    }
+
+    bigint_free(&restante);
+    limpiarArreglo(&stockTrabajo);
+    return 1;
+}
+
+static void imprimirResultado(const BigIntArray *monedas, const BigIntArray *solucion, const BigIntArray *stock, int usarStock)
+{
     dibujarLinea();
     printf("Resultado del cambio\n");
     dibujarLinea();
-    for (i = 0; i < tamano(&monedas); i++)
+
+    for (size_t i = 0; i < monedas->len; i++)
     {
         if (usarStock)
-            printf("Moneda %4d c  -> cantidad %3d | stock %3d\n", recuperar(monedas, i), recuperar(solucion, i), recuperar(stock, i));
+            printf("Moneda %s c  -> cantidad %s | stock %s\n", monedas->items[i].digits, solucion->items[i].digits, stock->items[i].digits);
         else
-            printf("Moneda %4d c  -> cantidad %3d\n", recuperar(monedas, i), recuperar(solucion, i));
+            printf("Moneda %s c  -> cantidad %s\n", monedas->items[i].digits, solucion->items[i].digits);
     }
+
     dibujarLinea();
 }
 
-/*
- * PROGRAMA PRINCIPAL
- * ------------------
- * Orquesta la ejecucion completa:
- * 1) pide modo
- * 2) pide moneda
- * 3) carga datos desde archivos
- * 4) entra en bucle de calculo hasta que usuario ingresa 0
- * 5) libera memoria y termina
- */
 int main(void)
 {
     char moneda[MAX_MONEDA_NOMBRE + 1];
-    int opcion;
-    vectorP monedas = NULL;
-    vectorP stock = NULL;
+    char monedaClave[MAX_MONEDA_NOMBRE + 1];
+    char monedaCmd[MAX_MONEDA_NOMBRE + 1];
+    int opcion = 0;
+    int ejecutando = 1;
+    BigIntArray monedas = {0};
+    BigIntArray stock = {0};
 
-    /* 1) Seleccion de modo. */
-    opcion = pedirOpcion();
-    if (opcion != 'a' && opcion != 'b')
+    while (ejecutando)
     {
-        printf("Opcion no valida.\n");
-        return EXIT_FAILURE;
-    }
-
-    /* 2) Seleccion de moneda. */
-    printf("Nombre de la moneda (ej: euro, dolar, yen): ");
-    if (!leerLinea(moneda, sizeof(moneda)) || moneda[0] == '\0')
-    {
-        printf("Nombre de moneda no valido.\n");
-        return EXIT_FAILURE;
-    }
-
-    /* 3) Carga de denominaciones desde monedas.txt. */
-    if (!cargarDatosMoneda("monedas.txt", moneda, 0, &monedas))
-    {
-        printf("No se encontro la moneda en monedas.txt.\n");
-        return EXIT_FAILURE;
-    }
-
-    /* 4) Si modo limitado, carga stock de stock.txt. */
-    if (opcion == 'b')
-    {
-        if (!cargarDatosMoneda("stock.txt", moneda, 1, &stock))
+        if (opcion != 'a' && opcion != 'b')
         {
-            liberar(&monedas);
-            printf("No se encontro stock para la moneda seleccionada.\n");
-            return EXIT_FAILURE;
+            while (1)
+            {
+                opcion = pedirOpcion();
+                if (opcion == 'a' || opcion == 'b')
+                    break;
+
+                if (opcion == -2)
+                {
+                    ejecutando = 0;
+                    break;
+                }
+
+                if (opcion == -1)
+                {
+                    printf("Entrada finalizada.\n");
+                    ejecutando = 0;
+                    break;
+                }
+
+                printf("Opcion no valida. Intente de nuevo.\n");
+            }
         }
-    }
 
-    /* 5) Bucle principal de solicitud de montos y calculo de cambio. */
-    while (1)
-    {
-        int cantidad = pedirCantidad();
-        int resultado;
-        vectorP solucion = NULL;
-
-        /* Convencion: 0 termina la aplicacion. */
-        if (cantidad == 0)
+        if (!ejecutando)
             break;
 
-        /* -1 indica entrada invalida. */
-        if (cantidad < 0)
+        while (1)
         {
-            printf("Entrada invalida. Introduzca un entero positivo.\n");
+            limpiarArreglo(&stock);
+            limpiarArreglo(&monedas);
+
+            printf("Nombre de la moneda (ej: euro, dolar, yen), 'modo' o 'salir': ");
+            if (!leerLinea(moneda, sizeof(moneda)))
+            {
+                printf("Entrada finalizada.\n");
+                ejecutando = 0;
+                break;
+            }
+
+            if (moneda[0] == '\0')
+            {
+                printf("Nombre de moneda no valido. Intente de nuevo.\n");
+                continue;
+            }
+
+            normalizarClave(moneda, monedaCmd, sizeof(monedaCmd));
+            if (strcmp(monedaCmd, "salir") == 0)
+            {
+                ejecutando = 0;
+                break;
+            }
+
+            if (strcmp(monedaCmd, "modo") == 0)
+            {
+                opcion = 0;
+                break;
+            }
+
+            normalizarClave(moneda, monedaClave, sizeof(monedaClave));
+
+            if (!cargarDenominacionesMoneda(monedaClave, &monedas))
+            {
+                printf("No se encontro la moneda en monedas.txt. Intente de nuevo.\n");
+                continue;
+            }
+
+            if (opcion == 'b')
+            {
+                if (!cargarStockMoneda(monedaClave, &stock))
+                {
+                    limpiarArreglo(&monedas);
+                    printf("No se encontro stock para la moneda seleccionada. Intente de nuevo.\n");
+                    continue;
+                }
+
+                if (stock.len != monedas.len)
+                {
+                    limpiarArreglo(&stock);
+                    limpiarArreglo(&monedas);
+                    printf("Inconsistencia entre denominaciones y stock. Intente otra moneda.\n");
+                    continue;
+                }
+            }
+
+            while (1)
+            {
+                BigInt cantidad = {0};
+                int estadoCantidad;
+                int resultado;
+                BigIntArray solucion = {0};
+
+                estadoCantidad = pedirCantidad(&cantidad);
+                if (estadoCantidad == -1)
+                {
+                    printf("Entrada finalizada.\n");
+                    bigint_free(&cantidad);
+                    ejecutando = 0;
+                    break;
+                }
+
+                if (estadoCantidad == 2)
+                {
+                    bigint_free(&cantidad);
+                    break;
+                }
+
+                if (estadoCantidad == 3)
+                {
+                    bigint_free(&cantidad);
+                    ejecutando = 0;
+                    break;
+                }
+
+                if (estadoCantidad == 0)
+                {
+                    printf("Entrada invalida. Introduzca un entero no negativo.\n");
+                    bigint_free(&cantidad);
+                    continue;
+                }
+
+                if (opcion == 'a')
+                {
+                    resultado = cambio(&cantidad, &monedas, &solucion);
+                    if (resultado)
+                        imprimirResultado(&monedas, &solucion, NULL, 0);
+                    else
+                        printf("No existe cambio exacto para esa cantidad.\n");
+                }
+                else
+                {
+                    resultado = cambioStock(&cantidad, &monedas, &solucion, &stock);
+                    if (resultado)
+                    {
+                        imprimirResultado(&monedas, &solucion, &stock, 1);
+                        if (!actualizarStockMoneda(monedaClave, &stock))
+                            printf("No se pudo actualizar el archivo de stock.\n");
+                    }
+                    else
+                    {
+                        printf("No existe cambio exacto para esa cantidad con el stock actual.\n");
+                    }
+                }
+
+                limpiarArreglo(&solucion);
+                bigint_free(&cantidad);
+            }
+
+            if (!ejecutando)
+                break;
+
+            /* Vuelve a seleccionar moneda dentro del mismo modo. */
+            break;
+        }
+
+        if (!ejecutando)
+            break;
+
+        /* Si opcion se reinicio a 0, el usuario pidio cambiar de modo. */
+        if (opcion == 0)
             continue;
-        }
-
-        /* Modo sin stock: solo calcula cantidades. */
-        if (opcion == 'a')
-        {
-            resultado = cambio(cantidad, monedas, &solucion);
-            if (resultado)
-                imprimirResultado(monedas, solucion, NULL, 0);
-            else
-                printf("No existe cambio exacto para esa cantidad.\n");
-        }
-        else
-        {
-            /* Modo con stock: calcula y descuenta unidades. */
-            resultado = cambioStock(cantidad, monedas, &solucion, stock);
-            if (resultado)
-            {
-                imprimirResultado(monedas, solucion, stock, 1);
-                /* Persiste el stock actualizado para futuras ejecuciones. */
-                if (!actualizarStockArchivo(moneda, stock))
-                    printf("No se pudo actualizar el archivo de stock.\n");
-            }
-            else
-            {
-                printf("No existe cambio exacto para esa cantidad con el stock actual.\n");
-            }
-        }
-
-        /* Libera vector temporal de la iteracion actual. */
-        liberar(&solucion);
     }
 
-    /* 6) Liberacion final de recursos y salida. */
-    liberar(&stock);
-    liberar(&monedas);
+    limpiarArreglo(&stock);
+    limpiarArreglo(&monedas);
     printf("Gracias por utilizar este programa.\n");
     return EXIT_SUCCESS;
 }
