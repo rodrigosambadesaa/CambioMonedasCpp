@@ -1,0 +1,25 @@
+# Binaries
+*.exe
+*.out
+*.o
+
+# Logs and dumps
+*.stackdump
+*.log
+
+# Temporary and generated data
+stock.tmp
+*.tmp
+
+# Legacy NetBeans build artifacts
+build/
+dist/
+.dep.inc
+
+# Legacy NetBeans metadata
+nbproject/
+
+# IDE and OS
+.vscode/
+.DS_Store
+Thumbs.db

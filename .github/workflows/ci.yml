@@ -1,0 +1,41 @@
+name: C CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz
+
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf "a\neuro\n0\n" | ./progvoraz
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz.exe
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @"
+          a
+          euro
+          0
+          "@ | .\progvoraz.exe | Out-String
