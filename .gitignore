@@ -2,6 +2,8 @@
 *.exe
 *.out
 *.o
+progvoraz
+progvoraz_gui
 
 # Logs and dumps
 *.stackdump
@@ -20,6 +22,11 @@ dist/
 nbproject/
 
 # IDE and OS
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/c_cpp_properties.json
+!.vscode/extensions.json
+!.vscode/.gitkeep
 .DS_Store
 Thumbs.db

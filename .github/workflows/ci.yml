@@ -18,7 +18,7 @@ jobs:
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
-        run: gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz
 
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
@@ -28,7 +28,7 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: gcc -std=c11 -Wall -Wextra -Wpedantic -O2 main.c vectordinamico.c -o progvoraz.exe
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.c moneda_gestion.c bigint.c vector_dinamico.c -o progvoraz.exe
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'

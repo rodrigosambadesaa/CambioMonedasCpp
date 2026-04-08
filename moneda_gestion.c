@@ -7,14 +7,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
-#include "monedagestion.h"
+#include "moneda_gestion.h"
 
 #define MAX_TOKEN 256
 #define MAX_DENOMINACIONES 64
 #define MAX_LINEA_STOCK 256
 #define MAX_LINEAS_STOCK 512
 
-static int esTextoBigIntValido(const char *texto)
+static int es_texto_bigint_valido(const char *texto)
 {
     size_t i;
 
@@ -30,7 +30,7 @@ static int esTextoBigIntValido(const char *texto)
     return 1;
 }
 
-static char *duplicarCadena(const char *texto)
+static char *duplicar_cadena(const char *texto)
 {
     size_t len;
     char *copia;
@@ -47,7 +47,7 @@ static char *duplicarCadena(const char *texto)
     return copia;
 }
 
-static void recortarFinLinea(char *texto)
+static void recortar_fin_linea(char *texto)
 {
     if (texto == NULL)
         return;
@@ -55,7 +55,7 @@ static void recortarFinLinea(char *texto)
     texto[strcspn(texto, "\r\n")] = '\0';
 }
 
-static int cargarDatosMoneda(const char *archivo, const char *nombreMoneda, int convertirMenosUnoACero, BigIntArray *resultado)
+static int cargar_datos_moneda(const char *archivo, const char *nombreMoneda, int convertirMenosUnoACero, BigIntArray *resultado)
 {
     FILE *fp = fopen(archivo, "r");
     char token[MAX_TOKEN];
@@ -78,7 +78,7 @@ static int cargarDatosMoneda(const char *archivo, const char *nombreMoneda, int 
         if (convertirMenosUnoACero && strcmp(token, "-1") == 0)
             strcpy(token, "0");
 
-        if (!esTextoBigIntValido(token))
+        if (!es_texto_bigint_valido(token))
             break;
 
         if (cantidad >= MAX_DENOMINACIONES)
@@ -116,17 +116,17 @@ static int cargarDatosMoneda(const char *archivo, const char *nombreMoneda, int 
     return 1;
 }
 
-int cargarDenominacionesMoneda(const char *nombreMoneda, BigIntArray *resultado)
+int cargar_denominaciones_moneda(const char *nombreMoneda, BigIntArray *resultado)
 {
-    return cargarDatosMoneda("monedas.txt", nombreMoneda, 0, resultado);
+    return cargar_datos_moneda("monedas.txt", nombreMoneda, 0, resultado);
 }
 
-int cargarStockMoneda(const char *nombreMoneda, BigIntArray *resultado)
+int cargar_stock_moneda(const char *nombreMoneda, BigIntArray *resultado)
 {
-    return cargarDatosMoneda("stock.txt", nombreMoneda, 1, resultado);
+    return cargar_datos_moneda("stock.txt", nombreMoneda, 1, resultado);
 }
 
-int actualizarStockMoneda(const char *nombreMoneda, const BigIntArray *stock)
+int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock)
 {
     FILE *archivo = fopen("stock.txt", "r+");
     char *lineas[MAX_LINEAS_STOCK];
@@ -159,7 +159,7 @@ int actualizarStockMoneda(const char *nombreMoneda, const BigIntArray *stock)
             break;
         }
 
-        lineas[totalLineas] = duplicarCadena(buffer);
+        lineas[totalLineas] = duplicar_cadena(buffer);
         if (lineas[totalLineas] == NULL)
         {
             ok = 0;
@@ -174,7 +174,7 @@ int actualizarStockMoneda(const char *nombreMoneda, const BigIntArray *stock)
         {
             strncpy(comparable, lineas[linea], sizeof(comparable) - 1);
             comparable[sizeof(comparable) - 1] = '\0';
-            recortarFinLinea(comparable);
+            recortar_fin_linea(comparable);
 
             if (strcmp(comparable, nombreMoneda) != 0)
                 continue;
@@ -196,7 +196,7 @@ int actualizarStockMoneda(const char *nombreMoneda, const BigIntArray *stock)
                     snprintf(nuevaLinea, sizeof(nuevaLinea), "%s\n", stock->items[i].digits);
 
                 free(lineas[objetivo]);
-                lineas[objetivo] = duplicarCadena(nuevaLinea);
+                lineas[objetivo] = duplicar_cadena(nuevaLinea);
                 if (lineas[objetivo] == NULL)
                 {
                     ok = 0;
@@ -255,3 +255,4 @@ int actualizarStockMoneda(const char *nombreMoneda, const BigIntArray *stock)
 
     return ok ? 1 : 0;
 }
+

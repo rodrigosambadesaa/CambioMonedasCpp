@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "vectordinamico.h"
+#include "vector_dinamico.h"
 
 /*
  * Estructura real del vector dinamico.
@@ -95,3 +95,4 @@ unsigned long tamano(vectorP *v1)
 
     return (*v1)->tam;
 }
+

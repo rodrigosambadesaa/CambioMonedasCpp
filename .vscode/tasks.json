@@ -1,0 +1,136 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build: consola",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-O2",
+                "main.c",
+                "moneda_gestion.c",
+                "bigint.c",
+                "-o",
+                "progvoraz.exe"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "build: consola (macOS/Linux)",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-O2",
+                "main.c",
+                "moneda_gestion.c",
+                "bigint.c",
+                "-o",
+                "progvoraz"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "linux": {
+                "group": "build"
+            },
+            "osx": {
+                "group": "build"
+            }
+        },
+        {
+            "label": "build: gui",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-O2",
+                "gui_window.c",
+                "moneda_gestion.c",
+                "bigint.c",
+                "-o",
+                "progvoraz_gui.exe",
+                "-mwindows"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "build: gui (Linux)",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-O2",
+                "gui_portable.c",
+                "moneda_gestion.c",
+                "bigint.c",
+                "-o",
+                "progvoraz_gui"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "build: gui (macOS)",
+            "type": "shell",
+            "command": "swiftc",
+            "args": [
+                "gui_macos.swift",
+                "-o",
+                "progvoraz_gui"
+            ]
+        },
+        {
+            "label": "run: consola",
+            "type": "shell",
+            "command": ".\\progvoraz.exe",
+            "dependsOn": "build: consola"
+        },
+        {
+            "label": "run: consola (macOS/Linux)",
+            "type": "shell",
+            "command": "./progvoraz",
+            "dependsOn": "build: consola (macOS/Linux)"
+        },
+        {
+            "label": "run: gui",
+            "type": "shell",
+            "command": ".\\progvoraz_gui.exe",
+            "dependsOn": "build: gui"
+        },
+        {
+            "label": "run: gui (Linux)",
+            "type": "shell",
+            "command": "./progvoraz_gui",
+            "dependsOn": "build: gui (Linux)"
+        },
+        {
+            "label": "run: gui (macOS)",
+            "type": "shell",
+            "command": "./progvoraz_gui",
+            "dependsOn": "build: gui (macOS)"
+        }
+    ]
+}
