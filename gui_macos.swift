@@ -353,5 +353,5 @@ struct ProgVorazMacOSApp {
 
 #else
 import Foundation
-print("Esta implementacion solo aplica en macOS.")
+enum UnsupportedPlatformPlaceholder {}
 #endif
