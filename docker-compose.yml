@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  progvoraz-console:
+    build: .
+    command: /app/progvoraz
+    volumes:
+      - ./monedas.txt:/app/monedas.txt:ro
+      - ./stock.txt:/app/stock.txt
+      - ./historial.txt:/app/historial.txt
+    stdin_open: true
+    tty: true
+
+  progvoraz-gui-portable:
+    build: .
+    command: /app/progvoraz_gui
+    volumes:
+      - ./monedas.txt:/app/monedas.txt:ro
+      - ./stock.txt:/app/stock.txt
+      - ./historial.txt:/app/historial.txt
+    stdin_open: true
+    tty: true

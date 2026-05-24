@@ -14,6 +14,7 @@
 #include <string.h>
 #include "bigint.h"
 #include "moneda_gestion.h"
+#include "algoritmo_cambio.h"
 
 #define MAX_MONEDA_NOMBRE 20
 
@@ -798,16 +799,16 @@ int main(void)
 
                 if (opcion == 'a')
                 {
-                    resultado = cambio(&cantidad, &monedas, &solucion);
-                    if (resultado)
+                    /* Modo ilimitado: usar algoritmo optimo cuando sea posible */
+                    if (calcular_cambio_optimo(&cantidad, &monedas, &solucion))
                         imprimir_resultado(&monedas, &solucion, NULL, 0);
                     else
                         printf("No existe cambio exacto para esa cantidad.\n");
                 }
                 else
                 {
-                    resultado = cambio_stock(&cantidad, &monedas, &solucion, &stock);
-                    if (resultado)
+                    /* Modo con stock: usar algoritmo que respeta stock */
+                    if (calcular_cambio_optimo_stock(&cantidad, &monedas, &stock, &solucion))
                     {
                         imprimir_resultado(&monedas, &solucion, &stock, 1);
                         if (!actualizar_stock_moneda(monedaClave, &stock))
@@ -843,4 +844,3 @@ int main(void)
     printf("Gracias por utilizar este programa.\n");
     return EXIT_SUCCESS;
 }
-
