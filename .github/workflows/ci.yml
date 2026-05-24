@@ -63,7 +63,7 @@ jobs:
       - name: Smoke test GUI portable (macOS)
         if: runner.os == 'macOS'
         run: |
-          printf "euro\nvolver\nsalir\n" | ./progvoraz_gui_portable
+          printf "euro\nvolver\nsalir\n" | ./progvoraz_gui
 
       - name: Smoke launch GUI Swift (macOS)
         if: runner.os == 'macOS'
