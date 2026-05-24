@@ -128,7 +128,7 @@ int cargar_stock_moneda(const char *nombreMoneda, BigIntArray *resultado)
 
 int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock)
 {
-    FILE *archivo = fopen("stock.txt", "r+");
+    FILE *archivo = fopen("stock.txt", "r");
     char *lineas[MAX_LINEAS_STOCK];
     char buffer[MAX_LINEA_STOCK];
     char comparable[MAX_LINEA_STOCK];
@@ -167,6 +167,8 @@ int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock)
         }
         totalLineas++;
     }
+
+    fclose(archivo);
 
     if (ok)
     {
@@ -213,46 +215,61 @@ int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock)
     {
         for (i = 0; i < totalLineas; i++)
             free(lineas[i]);
-        fclose(archivo);
         return 0;
     }
 
-    rewind(archivo);
-    for (i = 0; i < totalLineas; i++)
+    /* Escribir en archivo temporal y reemplazar el original para mayor seguridad */
     {
-        if (fputs(lineas[i], archivo) == EOF)
+        FILE *tmp = fopen("stock.tmp", "w");
+        if (tmp == NULL)
         {
-            ok = 0;
-            break;
+            for (i = 0; i < totalLineas; i++)
+                free(lineas[i]);
+            return 0;
         }
-    }
 
-    if (ok && fflush(archivo) != 0)
-        ok = 0;
-
-    if (ok)
-    {
-        long fin = ftell(archivo);
-        if (fin < 0)
+        for (i = 0; i < totalLineas; i++)
         {
-            ok = 0;
+            if (fputs(lineas[i], tmp) == EOF)
+            {
+                ok = 0;
+                break;
+            }
         }
-        else
+
+        if (ok && fflush(tmp) != 0)
+            ok = 0;
+
+        if (fclose(tmp) != 0)
+            ok = 0;
+
+        if (!ok)
         {
+            /* intentar borrar el temporal si algo falló */
+            remove("stock.tmp");
+            for (i = 0; i < totalLineas; i++)
+                free(lineas[i]);
+            return 0;
+        }
+
 #ifdef _WIN32
-            if (_chsize_s(_fileno(archivo), (__int64)fin) != 0)
-                ok = 0;
+        /* En Windows, rename sobre un fichero existente puede fallar, eliminar primero */
+        remove("stock.txt");
 #else
-            if (ftruncate(fileno(archivo), (off_t)fin) != 0)
-                ok = 0;
+        /* En POSIX, replace con rename es atómico */
 #endif
+        if (rename("stock.tmp", "stock.txt") != 0)
+        {
+            /* si falla, intentar eliminar el temporal y retornar error */
+            remove("stock.tmp");
+            for (i = 0; i < totalLineas; i++)
+                free(lineas[i]);
+            return 0;
         }
     }
 
     for (i = 0; i < totalLineas; i++)
         free(lineas[i]);
-    fclose(archivo);
 
-    return ok ? 1 : 0;
+    return 1;
 }
-
