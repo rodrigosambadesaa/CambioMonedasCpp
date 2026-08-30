@@ -1,239 +1,144 @@
 #include "algoritmo_cambio.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <algorithm>
+#include <limits>
+#include <string>
+#include <vector>
 
-#define DP_MONTO_MAX ((size_t)50000)
-#define DP_NO_APLICA (-1)
-#define DP_SIN_SOLUCION 0
-#define DP_OK 1
+namespace {
+constexpr std::size_t kMaxAmount = 500000;
+constexpr std::size_t kInf = std::numeric_limits<std::size_t>::max() / 4;
 
-static int bigint_a_size_limitado(const BigInt *n, size_t limite, size_t *valor_out)
-{
-    size_t valor = 0;
-    const char *p;
-
-    if (n == NULL || n->digits == NULL || valor_out == NULL)
-        return 0;
-
-    for (p = n->digits; *p != '\0'; p++)
-    {
-        unsigned int digito;
-
-        if (*p < '0' || *p > '9')
-            return 0;
-
-        digito = (unsigned int)(*p - '0');
-        if (valor > limite / 10 || (valor == limite / 10 && digito > limite % 10))
-            return 0;
-
-        valor = valor * 10 + digito;
+bool to_size(const BigInt *n, std::size_t limit, std::size_t *out) {
+    if (!n || !n->digits || !out || !*n->digits) return false;
+    std::size_t v = 0;
+    for (const char *p = n->digits; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        std::size_t d = static_cast<std::size_t>(*p - '0');
+        if (v > limit / 10 || (v == limit / 10 && d > limit % 10)) return false;
+        v = v * 10 + d;
     }
-
-    *valor_out = valor;
-    return 1;
+    *out = v;
+    return true;
 }
 
-static int bigint_a_size_con_tope(const BigInt *n, size_t tope, size_t *valor_out)
-{
-    size_t valor = 0;
-    const char *p;
-
-    if (n == NULL || n->digits == NULL || valor_out == NULL)
-        return 0;
-
-    for (p = n->digits; *p != '\0'; p++)
-    {
-        unsigned int digito;
-
-        if (*p < '0' || *p > '9')
-            return 0;
-
-        digito = (unsigned int)(*p - '0');
-        if (valor > tope / 10 || (valor == tope / 10 && digito > tope % 10))
-        {
-            *valor_out = tope;
-            return 1;
+bool set_result(const std::vector<std::size_t> &counts, BigIntArray *out) {
+    if (!out || counts.empty() || !bigint_array_create(out, counts.size())) return false;
+    for (std::size_t i = 0; i < counts.size(); ++i) {
+        BigInt n{nullptr};
+        std::string s = std::to_string(counts[i]);
+        if (!bigint_init(&n, s.c_str()) || !bigint_array_set(out, i, &n)) {
+            bigint_free(&n); bigint_array_free(out); return false;
         }
-
-        valor = valor * 10 + digito;
+        bigint_free(&n);
     }
-
-    *valor_out = valor;
-    return 1;
+    return true;
 }
 
-static int size_a_bigint(size_t valor, BigInt *out)
-{
-    char texto[32];
-
-    if (out == NULL)
-        return 0;
-
-    snprintf(texto, sizeof(texto), "%zu", valor);
-    return bigint_init(out, texto);
+bool read_values(const BigIntArray *a, std::size_t amount, std::vector<std::size_t> *out) {
+    if (!a || !a->items || !a->len || !out) return false;
+    out->assign(a->len, 0);
+    for (std::size_t i = 0; i < a->len; ++i)
+        if (!to_size(&a->items[i], amount, &(*out)[i])) return false;
+    return true;
 }
 
-static int cargar_solucion_size(const size_t *cantidades, size_t len, BigIntArray *solucion)
-{
-    size_t i;
-
-    if (cantidades == NULL || solucion == NULL || len == 0)
-        return 0;
-
-    if (!bigint_array_create(solucion, len))
-        return 0;
-
-    for (i = 0; i < len; i++)
-    {
-        BigInt tmp = {0};
-
-        if (!size_a_bigint(cantidades[i], &tmp) ||
-            !bigint_array_set(solucion, i, &tmp))
-        {
-            bigint_free(&tmp);
-            bigint_array_free(solucion);
-            return 0;
-        }
-
-        bigint_free(&tmp);
-    }
-
-    return 1;
-}
-
-/* Implementacion reducida: varias rutinas extensas del original se transcriben
-   fielmente para preservar el algoritmo. */
-
-static int calcular_dp_ilimitado(const BigInt *monto, const BigIntArray *denom, BigIntArray *solucion)
-{
-    const size_t inf = ((size_t)-1) / 4;
-    size_t amount;
-    size_t *valores = NULL;
-    size_t *dp = NULL;
-    size_t *previo = NULL;
-    size_t *moneda = NULL;
-    size_t *cantidades = NULL;
-    size_t i;
-    int resultado = DP_NO_APLICA;
-
-    if (!bigint_a_size_limitado(monto, DP_MONTO_MAX, &amount))
-        return DP_NO_APLICA;
-
-    valores = (size_t *)calloc(denom->len, sizeof(size_t));
-    dp = (size_t *)malloc((amount + 1) * sizeof(size_t));
-    previo = (size_t *)malloc((amount + 1) * sizeof(size_t));
-    moneda = (size_t *)malloc((amount + 1) * sizeof(size_t));
-    cantidades = (size_t *)calloc(denom->len, sizeof(size_t));
-
-    if (valores == NULL || dp == NULL || previo == NULL || moneda == NULL || cantidades == NULL)
-        goto cleanup;
-
-    for (i = 0; i < denom->len; i++)
-    {
-        if (!bigint_a_size_con_tope(&denom->items[i], amount + 1, &valores[i]))
-            goto cleanup;
-    }
-
-    for (i = 0; i <= amount; i++)
-    {
-        dp[i] = inf;
-        previo[i] = 0;
-        moneda[i] = denom->len;
-    }
-
-    dp[0] = 0;
-
-    for (i = 1; i <= amount; i++)
-    {
-        size_t j;
-
-        for (j = 0; j < denom->len; j++)
-        {
-            size_t valor = valores[j];
-
-            if (valor == 0 || valor > i || dp[i - valor] == inf)
-                continue;
-
-            if (dp[i - valor] + 1 < dp[i])
-            {
-                dp[i] = dp[i - valor] + 1;
-                previo[i] = i - valor;
-                moneda[i] = j;
+bool solve_unlimited(std::size_t amount, const std::vector<std::size_t> &values,
+                     std::size_t min_coins, std::size_t max_coins,
+                     std::vector<std::size_t> *counts) {
+    max_coins = std::min(max_coins, amount + 1);
+    if (min_coins > max_coins) return false;
+    std::vector<std::size_t> best(amount + 1, kInf), prev(amount + 1), coin(amount + 1, values.size());
+    best[0] = 0;
+    for (std::size_t sum = 1; sum <= amount; ++sum) {
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            std::size_t v = values[i];
+            if (!v || v > sum || best[sum - v] == kInf) continue;
+            if (best[sum - v] + 1 < best[sum]) {
+                best[sum] = best[sum - v] + 1; prev[sum] = sum - v; coin[sum] = i;
             }
         }
     }
-
-    if (dp[amount] == inf)
-    {
-        resultado = DP_SIN_SOLUCION;
-        goto cleanup;
+    if (best[amount] == kInf || best[amount] < min_coins || best[amount] > max_coins) return false;
+    counts->assign(values.size(), 0);
+    for (std::size_t sum = amount; sum; sum = prev[sum]) {
+        if (coin[sum] >= values.size() || prev[sum] >= sum) return false;
+        ++(*counts)[coin[sum]];
     }
-
-    for (i = amount; i > 0;)
-    {
-        size_t idx = moneda[i];
-
-        if (idx >= denom->len || previo[i] >= i)
-            goto cleanup;
-
-        cantidades[idx]++;
-        i = previo[i];
-    }
-
-    resultado = cargar_solucion_size(cantidades, denom->len, solucion) ? DP_OK : DP_NO_APLICA;
-
-cleanup:
-    free(valores);
-    free(dp);
-    free(previo);
-    free(moneda);
-    free(cantidades);
-    return resultado;
+    return true;
 }
 
-/* Peso reducido: solo exponemos la interfaz principal que usa la ruta DP cuando
-   es aplicable y fallback por backtracking simple cuando no. Para stock se
-   delega a la ruta DP si el monto es acotable, o a una busqueda descendente.
-   Esta implementacion adapta la logica principal suficiente para las pruebas.
-*/
+bool solve_limited(std::size_t amount, const std::vector<std::size_t> &values,
+                   const std::vector<std::size_t> &stock, std::size_t min_coins,
+                   std::size_t max_coins, std::vector<std::size_t> *counts) {
+    max_coins = std::min(max_coins, amount + 1);
+    if (values.size() != stock.size() || min_coins > max_coins) return false;
+    std::vector<std::size_t> best(amount + 1, kInf), prev(amount + 1), coin(amount + 1, values.size());
+    best[0] = 0;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        std::size_t v = values[i];
+        if (!v) continue;
+        std::size_t copies = std::min(stock[i], amount / v);
+        for (std::size_t k = 0; k < copies; ++k) {
+            for (std::size_t sum = amount; sum >= v; --sum) {
+                if (best[sum - v] != kInf && best[sum - v] + 1 < best[sum]) {
+                    best[sum] = best[sum - v] + 1; prev[sum] = sum - v; coin[sum] = i;
+                }
+                if (sum == v) break;
+            }
+        }
+    }
+    if (best[amount] == kInf || best[amount] < min_coins || best[amount] > max_coins) return false;
+    counts->assign(values.size(), 0);
+    for (std::size_t sum = amount; sum; sum = prev[sum]) {
+        if (coin[sum] >= values.size() || prev[sum] >= sum) return false;
+        ++(*counts)[coin[sum]];
+    }
+    return true;
+}
 
-int calcular_cambio_optimo(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion)
-{
-    if (monto == NULL || denominaciones == NULL || solucion == NULL)
-        return 0;
+int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *stock,
+          std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
+    std::size_t requested = 0;
+    if (!amount || !denom || !result || !to_size(amount, kMaxAmount, &requested)) return 0;
+    std::vector<std::size_t> values;
+    if (!read_values(denom, requested, &values)) return 0;
+    std::vector<std::size_t> counts;
+    bool ok = false;
+    if (!stock) ok = solve_unlimited(requested, values, min_coins, max_coins, &counts);
+    else {
+        if (!stock->items || stock->len != denom->len) return 0;
+        std::vector<std::size_t> limits;
+        if (!read_values(stock, requested, &limits)) return 0;
+        ok = solve_limited(requested, values, limits, min_coins, max_coins, &counts);
+    }
+    return ok && set_result(counts, result) ? 1 : 0;
+}
 
-    int dp = calcular_dp_ilimitado(monto, denominaciones, solucion);
-    if (dp != DP_NO_APLICA)
-        return dp == DP_OK;
-
-    /* Fallback simple: intentamos backtracking por cantidades descendentes
-       (implementacion reducida pero funcional para montos pequeños). */
-    /* Fallback: no implementado aquí (ruta DP ya cubierta los casos de prueba). */
+template <typename Solver>
+int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solver solver) {
+    std::size_t requested = 0;
+    if (!amount || !covered || !to_size(amount, kMaxAmount, &requested)) return 0;
+    for (std::size_t value = requested;; --value) {
+        BigInt candidate{nullptr}; std::string text = std::to_string(value);
+        if (!bigint_init(&candidate, text.c_str())) return 0;
+        if (solver(&candidate, result)) { bigint_free(covered); *covered = candidate; return 1; }
+        bigint_free(&candidate);
+        if (value == 0) break;
+    }
     return 0;
 }
-
-int calcular_cambio_optimo_stock(const BigInt *monto, const BigIntArray *denominaciones, const BigIntArray *stock, BigIntArray *solucion)
-{
-    if (monto == NULL || denominaciones == NULL || stock == NULL || solucion == NULL)
-        return 0;
-    if (denominaciones->len != stock->len)
-        return 0;
-
-    /* Intentamos ruta DP limitado; para esta reimplementacion inicial
-       usamos la misma DP si el monto cabe, ignorando topes de stock (simplificacion). */
-    int dp = calcular_dp_ilimitado(monto, denominaciones, solucion);
-    if (dp != DP_NO_APLICA)
-        return dp == DP_OK;
-
-    return 0;
 }
 
-/* Las funciones avanzadas de rango, cercano y variantes con stock se exponen
-   pero retornan 0 por ahora (se pueden implementar por completo si lo desea).
-*/
-int calcular_cambio_optimo_con_rango(const BigInt *, const BigIntArray *, size_t, size_t, BigIntArray *) { return 0; }
-int calcular_cambio_optimo_con_limite(const BigInt *, const BigIntArray *, size_t, BigIntArray *) { return 0; }
-int calcular_cambio_optimo_stock_con_rango(const BigInt *, const BigIntArray *, const BigIntArray *, size_t, size_t, BigIntArray *) { return 0; }
-int calcular_cambio_optimo_stock_con_limite(const BigInt *, const BigIntArray *, const BigIntArray *, size_t, BigIntArray *) { return 0; }
-int calcular_cambio_cercano_con_rango(const BigInt *, const BigIntArray *, size_t, size_t, BigInt *, BigIntArray *) { return 0; }
-int calcular_cambio_cercano_stock_con_rango(const BigInt *, const BigIntArray *, const BigIntArray *, size_t, size_t, BigInt *, BigIntArray *) { return 0; }
+int calcular_cambio_optimo(const BigInt *m, const BigIntArray *d, BigIntArray *s) { return solve(m, d, nullptr, 0, std::numeric_limits<std::size_t>::max(), s); }
+int calcular_cambio_optimo_stock(const BigInt *m, const BigIntArray *d, const BigIntArray *st, BigIntArray *s) { return solve(m, d, st, 0, std::numeric_limits<std::size_t>::max(), s); }
+int calcular_cambio_optimo_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigIntArray *s) { return solve(m, d, nullptr, lo, hi, s); }
+int calcular_cambio_optimo_con_limite(const BigInt *m, const BigIntArray *d, std::size_t hi, BigIntArray *s) { return solve(m, d, nullptr, 0, hi, s); }
+int calcular_cambio_optimo_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigIntArray *s) { return solve(m, d, st, lo, hi, s); }
+int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t hi, BigIntArray *s) { return solve(m, d, st, 0, hi, s); }
+
+int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
+}
+int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, st, lo, hi, out); });
+}
