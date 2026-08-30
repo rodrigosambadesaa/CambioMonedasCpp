@@ -1,9 +1,9 @@
 APP := progvoraz
-SRC := main.c vector_dinamico.c moneda_gestion.c bigint.c
+SRC := main.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
 GUI_APP := progvoraz_gui
-GUI_SRC_WIN := gui_window.c moneda_gestion.c bigint.c
+GUI_SRC_WIN := gui_window.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp vector_dinamico.cpp
 GUI_SRC_MAC := gui_macos.swift
-GUI_SRC_PORTABLE := gui_portable.c moneda_gestion.c bigint.c
+GUI_SRC_PORTABLE := gui_portable.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp vector_dinamico.cpp
 
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic
@@ -79,4 +79,3 @@ help:
 	@echo "  make gui      -> compila interfaz GUI (Windows nativa / macOS/Linux portable)"
 	@echo "  make run-gui  -> ejecuta interfaz GUI"
 	@echo "  make clean    -> elimina artefactos"
-

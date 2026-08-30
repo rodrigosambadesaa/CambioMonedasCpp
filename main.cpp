@@ -301,7 +301,7 @@ static void limpiar_arreglo(BigIntArray *arr)
         bigint_array_free(arr);
 }
 
-static int cambio(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion)
+[[maybe_unused]] static int cambio_greedy_legacy(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion)
 {
     BigInt restante = {0};
 
@@ -358,7 +358,7 @@ static int cambio(const BigInt *monto, const BigIntArray *denominaciones, BigInt
     }
 }
 
-static int cambio_stock(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion, BigIntArray *stock)
+[[maybe_unused]] static int cambio_stock_greedy_legacy(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion, BigIntArray *stock)
 {
     BigInt restante = {0};
     BigIntArray stockTrabajo = {};
@@ -491,6 +491,28 @@ static int cambio_stock(const BigInt *monto, const BigIntArray *denominaciones, 
 
     bigint_free(&restante);
     limpiar_arreglo(&stockTrabajo);
+    return 1;
+}
+
+static int cambio(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion)
+{
+    return calcular_cambio_optimo(monto, denominaciones, solucion);
+}
+
+static int cambio_stock(const BigInt *monto, const BigIntArray *denominaciones, BigIntArray *solucion, BigIntArray *stock)
+{
+    if (!calcular_cambio_optimo_stock(monto, denominaciones, stock, solucion))
+        return 0;
+    for (size_t i = 0; i < stock->len; ++i) {
+        BigInt nuevo = {0};
+        if (!bigint_subtract(&stock->items[i], &solucion->items[i], &nuevo) ||
+            !bigint_array_set(stock, i, &nuevo)) {
+            bigint_free(&nuevo);
+            limpiar_arreglo(solucion);
+            return 0;
+        }
+        bigint_free(&nuevo);
+    }
     return 1;
 }
 
@@ -799,16 +821,16 @@ int main(void)
 
                 if (opcion == 'a')
                 {
-                    /* Modo ilimitado: usar algoritmo optimo cuando sea posible */
-                    if (calcular_cambio_optimo(&cantidad, &monedas, &solucion))
+                    resultado = cambio(&cantidad, &monedas, &solucion);
+                    if (resultado)
                         imprimir_resultado(&monedas, &solucion, NULL, 0);
                     else
                         printf("No existe cambio exacto para esa cantidad.\n");
                 }
                 else
                 {
-                    /* Modo con stock: usar algoritmo que respeta stock */
-                    if (calcular_cambio_optimo_stock(&cantidad, &monedas, &stock, &solucion))
+                    resultado = cambio_stock(&cantidad, &monedas, &solucion, &stock);
+                    if (resultado)
                     {
                         imprimir_resultado(&monedas, &solucion, &stock, 1);
                         if (!actualizar_stock_moneda(monedaClave, &stock))
