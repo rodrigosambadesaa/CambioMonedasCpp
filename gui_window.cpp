@@ -427,6 +427,28 @@ static int calcular_y_mostrar_cambio(void)
         }
     }
 
+    if (g_modo_stock_limitado)
+    {
+        // El stock usado para calcular la solución puede haber cambiado.
+        // Consumir únicamente bajo bloqueo y comprobar el saldo actual.
+        if (!consumir_stock_moneda_transaccional(g_monedas[g_monedaActiva],
+                                               &solucion, &stock_nuevo))
+        {
+            limpiar_resultado_cambio();
+            SendMessageA(g_listResultado, LB_ADDSTRING, 0,
+                (LPARAM)"Inventario modificado o error al persistir: no se ha realizado la devolucion.");
+            bigint_array_free(&g_stock);
+            cargar_stock_moneda(g_monedas[g_monedaActiva], &g_stock);
+            bigint_free(&monto);
+            bigint_array_free(&solucion);
+            mostrar_error("Cambio", "No se ha descontado stock. Recarga y reintenta la operacion.");
+            return 0;
+        }
+        bigint_array_free(&g_stock);
+        g_stock = stock_nuevo;
+        stock_nuevo = {};
+    }
+
     for (size_t i = 0; i < g_denom.len; i++)
     {
         if (bigint_is_zero(&solucion.items[i]))
@@ -448,64 +470,7 @@ static int calcular_y_mostrar_cambio(void)
 
     ajustar_scroll_horizontal_lista(g_listResultado, max_chars + 4);
 
-    if (!g_modo_stock_limitado)
-    {
-        SetWindowTextA(g_editMonto, "");
-        bigint_free(&monto);
-        bigint_array_free(&solucion);
-        return 1;
-    }
-
-    if (!copiar_arreglo_bigint(&g_stock, &stock_nuevo))
-    {
-        bigint_free(&monto);
-        bigint_array_free(&solucion);
-        mostrar_error("Cambio", "No se pudo preparar actualizacion de stock.");
-        return 0;
-    }
-
-    for (size_t i = 0; i < stock_nuevo.len; i++)
-    {
-        BigInt nuevo_stock = {0};
-
-        if (bigint_is_zero(&solucion.items[i]))
-            continue;
-
-        if (!bigint_subtract(&stock_nuevo.items[i], &solucion.items[i], &nuevo_stock))
-        {
-            bigint_array_free(&stock_nuevo);
-            bigint_free(&monto);
-            bigint_array_free(&solucion);
-            mostrar_error("Cambio", "No se pudo aplicar la devolucion al stock.");
-            return 0;
-        }
-
-        if (!bigint_array_set(&stock_nuevo, i, &nuevo_stock))
-        {
-            bigint_free(&nuevo_stock);
-            bigint_array_free(&stock_nuevo);
-            bigint_free(&monto);
-            bigint_array_free(&solucion);
-            mostrar_error("Cambio", "No se pudo actualizar stock en memoria.");
-            return 0;
-        }
-
-        bigint_free(&nuevo_stock);
-    }
-
-    if (!actualizar_stock_moneda(g_monedas[g_monedaActiva], &stock_nuevo))
-    {
-        bigint_array_free(&stock_nuevo);
-        bigint_free(&monto);
-        bigint_array_free(&solucion);
-        mostrar_error("Cambio", "No se pudo persistir la devolucion en stock.txt.");
-        return 0;
-    }
-
-    bigint_array_free(&g_stock);
-    g_stock = stock_nuevo;
     SetWindowTextA(g_editMonto, "");
-
     bigint_free(&monto);
     bigint_array_free(&solucion);
     return 1;
@@ -563,7 +528,6 @@ static int aplicar_cambio_stock(int esSuma)
 
     int idxDenom;
     BigInt delta = {0};
-    BigInt nuevo = {0};
 
     if (g_monedaActiva < 0)
     {
@@ -584,50 +548,19 @@ static int aplicar_cambio_stock(int esSuma)
         return 0;
     }
 
-    if (esSuma)
-    {
-        if (!bigint_add(&g_stock.items[idxDenom], &delta, &nuevo))
-        {
-            bigint_free(&delta);
-            mostrar_error("Administrador", "No se pudo sumar la cantidad.");
-            return 0;
-        }
-    }
-    else
-    {
-        if (bigint_compare(&g_stock.items[idxDenom], &delta) < 0)
-        {
-            bigint_free(&delta);
-            mostrar_error("Administrador", "No puedes quitar mas stock del disponible.");
-            return 0;
-        }
-
-        if (!bigint_subtract(&g_stock.items[idxDenom], &delta, &nuevo))
-        {
-            bigint_free(&delta);
-            mostrar_error("Administrador", "No se pudo restar la cantidad.");
-            return 0;
-        }
-    }
-
-    if (!bigint_array_set(&g_stock, (size_t)idxDenom, &nuevo))
+    BigIntArray persisted = {};
+    if (!ajustar_stock_moneda_transaccional(g_monedas[g_monedaActiva], (size_t)idxDenom,
+                                            &delta, esSuma, &persisted))
     {
         bigint_free(&delta);
-        bigint_free(&nuevo);
-        mostrar_error("Administrador", "No se pudo actualizar el stock en memoria.");
+        bigint_array_free(&g_stock);
+        cargar_stock_moneda(g_monedas[g_monedaActiva], &g_stock);
+        mostrar_error("Administrador", "Inventario insuficiente, modificado o no guardado.");
         return 0;
     }
-
-    if (!actualizar_stock_moneda(g_monedas[g_monedaActiva], &g_stock))
-    {
-        bigint_free(&delta);
-        bigint_free(&nuevo);
-        mostrar_error("Administrador", "No se pudo persistir el stock en archivo.");
-        return 0;
-    }
-
+    bigint_array_free(&g_stock);
+    g_stock = persisted;
     bigint_free(&delta);
-    bigint_free(&nuevo);
 
     SetWindowTextA(g_editCantidad, "");
     refrescar_lista_stock();
