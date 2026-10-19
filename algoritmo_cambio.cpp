@@ -215,12 +215,11 @@ template <typename Solver>
 int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solver solver) {
     std::size_t requested = 0;
     if (!amount || !covered || !to_size(amount, kMaxAmount, &requested)) return 0;
-    for (std::size_t value = requested;; --value) {
+    for (std::size_t value = requested; value > 0; --value) {
         BigInt candidate{nullptr}; std::string text = std::to_string(value);
         if (!bigint_init(&candidate, text.c_str())) return 0;
         if (solver(&candidate, result)) { bigint_free(covered); *covered = candidate; return 1; }
         bigint_free(&candidate);
-        if (value == 0) break;
     }
     return 0;
 }
