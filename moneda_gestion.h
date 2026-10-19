@@ -32,5 +32,12 @@ int ajustar_stock_moneda_transaccional(const char *nombreMoneda, size_t indice,
                                       const BigInt *delta, int esSuma,
                                       BigIntArray *stock_actualizado);
 
+/* Cambio de caja: recibe piezas y entrega otras por el mismo valor
+ * dentro de una única transacción. No modifica stock ante errores.
+ */
+int intercambiar_stock_moneda_transaccional(const char *nombreMoneda,
+            const BigIntArray *recibidas, const BigIntArray *entregadas,
+            BigIntArray *stock_actualizado);
+
 #endif
 

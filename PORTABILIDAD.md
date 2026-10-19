@@ -65,3 +65,17 @@ Para límites de monedas con mínimo cero, `solve_near_single_pass` reutiliza un
 ## GUI con persistencia protegida
 
 La GUI Win32 y la interfaz portable ya no utilizan los valores de stock en memoria para sobrescribir el fichero completo. El panel administrador utiliza `ajustar_stock_moneda_transaccional`; las devoluciones limitadas en Windows utilizan `consumir_stock_moneda_transaccional`. La operación se confirma en pantalla únicamente tras persistirse. En caso de conflicto, el inventario se vuelve a cargar. La GUI nativa Swift de macOS conserva su implementación independiente pendiente de unificación.
+
+
+## Cambio específico de caja
+
+Se añade el equivalente nativo del modo \`caja / específico\`: validar que
+dos combinaciones de denominaciones tienen el mismo valor y, opcionalmente,
+actualizar el inventario mediante una sola transacción de recepción y entrega.
+Sintaxis: \`--specific MONEDA RECIBIDAS_CSV ENTREGADAS_CSV [--specific-stock]\`.
+Las cantidades siguen el orden definido en \`monedas.txt\`. Sin
+\`--specific-stock\`, la operación es únicamente una validación. La ruta
+con inventario verifica que \`stock + recibido - entregado >= 0\`
+para cada denominación y no sobrescribe el fichero en caso de error.
+Incluye pruebas de transacción válida, falta de inventario y cantidades
+monetarias diferentes en la matriz de GitHub Actions.

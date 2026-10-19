@@ -326,3 +326,59 @@ int ajustar_stock_moneda_transaccional(const char *nombreMoneda, size_t indice,
                                     &(*after)[indice]);
     },stock_actualizado);
 }
+
+
+namespace {
+bool sum_specific_value(const BigIntArray *denominations,
+                        const BigIntArray *pieces, BigInt *total) {
+    if (!denominations || !pieces || denominations->len != pieces->len ||
+        !denominations->items || !pieces->items || !total) return false;
+    BigInt aggregate{nullptr};
+    if (!bigint_init(&aggregate,"0")) return false;
+    bool ok=true;
+    for (size_t i=0;i<pieces->len;++i) {
+        BigInt value{nullptr}, next{nullptr};
+        ok=bigint_multiply(&denominations->items[i],&pieces->items[i],&value) &&
+           bigint_add(&aggregate,&value,&next);
+        bigint_free(&value);
+        if (!ok) {bigint_free(&next);break;}
+        bigint_free(&aggregate);
+        aggregate=next;
+    }
+    if (ok) {bigint_free(total);*total=aggregate;}
+    else bigint_free(&aggregate);
+    return ok;
+}
+}
+
+int intercambiar_stock_moneda_transaccional(const char *moneda,
+            const BigIntArray *recibidas, const BigIntArray *entregadas,
+            BigIntArray *stock_actualizado) {
+    if (!stock_actualizado) return 0;
+    std::vector<std::string> input,output;
+    if (!parse_values(recibidas,&input) || !parse_values(entregadas,&output) ||
+        input.size()!=output.size()) return 0;
+    BigIntArray denominations{};
+    if (!cargar_denominaciones_moneda(moneda,&denominations)) return 0;
+    BigInt incoming{nullptr},outgoing{nullptr};
+    bool equal=sum_specific_value(&denominations,recibidas,&incoming) &&
+               sum_specific_value(&denominations,entregadas,&outgoing) &&
+               bigint_compare(&incoming,&outgoing)==0;
+    bigint_array_free(&denominations);
+    bigint_free(&incoming);
+    bigint_free(&outgoing);
+    if (!equal) return 0;
+    return transaction(moneda,[&](const std::vector<std::string> &before,
+                                  std::vector<std::string> *after) {
+        if (before.size()!=input.size()) return false;
+        after->clear();
+        for (size_t i=0;i<before.size();++i) {
+            std::string added,remainder;
+            if (!calculate_difference(before[i],input[i],true,&added) ||
+                !calculate_difference(added,output[i],false,&remainder))
+                return false;
+            after->push_back(remainder);
+        }
+        return true;
+    },stock_actualizado);
+}
