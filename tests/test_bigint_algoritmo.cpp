@@ -205,8 +205,35 @@ static void differential_property_tests(void) {
     }
 }
 
+
+static void test_near_high_amount(void) {
+    const char *coins[]={"50000"};
+    BigInt requested{nullptr},covered{nullptr};
+    BigIntArray denominations{},answer{};
+    check_int(bigint_init(&requested,"150001"),"large nearest target");
+    check_int(crear_arreglo(&denominations,coins,1),"large nearest denoms");
+    check_int(calcular_cambio_cercano_con_rango(&requested,&denominations,0,
+              std::numeric_limits<std::size_t>::max(),&covered,&answer),"single-pass nearest");
+    check_int(covered.digits && std::string(covered.digits)=="150000","nearest reaches 150000");
+    const char *expected[]={"3"};
+    check_arreglo_texto(&answer,expected,1,"nearest uses three coins");
+    bigint_array_free(&answer);
+    bigint_free(&covered);
+    bigint_array_free(&denominations);
+    bigint_free(&requested);
+    const char *tooLarge[]={"200001"};
+    check_int(bigint_init(&requested,"150000"),"unreachable target");
+    check_int(crear_arreglo(&denominations,tooLarge,1),"unreachable denom");
+    check_int(!calcular_cambio_cercano_con_rango(&requested,&denominations,0,
+              std::numeric_limits<std::size_t>::max(),&covered,&answer),
+              "no positive closest change");
+    bigint_array_free(&answer);bigint_array_free(&denominations);
+    bigint_free(&covered);bigint_free(&requested);
+}
+
 int main(void)
 {
+    test_near_high_amount();
     differential_property_tests();
     test_rangos_stock_bigint();
     test_cambio_no_canonico_ilimitado();

@@ -211,6 +211,81 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
     return ok && set_result(counts, result) ? 1 : 0;
 }
 
+
+// Closest change without rebuilding the entire DP for every smaller amount.
+// Used when the lower bound on the coin count is zero.
+int solve_near_single_pass(const BigInt *amount, const BigIntArray *denom,
+                           const BigIntArray *stock, std::size_t max_coins,
+                           BigInt *covered, BigIntArray *result) {
+    std::size_t requested=0;
+    if (!amount || !denom || !result || !covered ||
+        !to_size(amount,kMaxAmount,&requested) || requested==0) return 0;
+    std::vector<std::size_t> values;
+    if (!read_values(denom,requested,&values)) return 0;
+    if (stock && (stock->len!=denom->len || !stock->items)) return 0;
+    std::vector<std::size_t> limits;
+    if (stock && !read_values(stock,requested,&limits)) return 0;
+    std::vector<std::size_t> best(requested+1,kInf);
+    best[0]=0;
+    std::vector<std::size_t> previous(requested+1,0), index(requested+1,values.size());
+    struct Node {std::shared_ptr<const Node> prior;std::size_t index,count;};
+    using Plan=std::shared_ptr<const Node>;
+    std::vector<Plan> plans;
+    if (!stock) {
+        for (std::size_t sum=1;sum<=requested;++sum)
+            for (std::size_t i=0;i<values.size();++i) {
+                auto value=values[i];
+                if (value==0 || value>sum || best[sum-value]==kInf) continue;
+                if (best[sum-value]+1<best[sum]) {
+                    best[sum]=best[sum-value]+1;
+                    previous[sum]=sum-value;index[sum]=i;
+                }
+            }
+    } else {
+        plans.resize(requested+1);
+        for (std::size_t i=0;i<values.size();++i) {
+            std::size_t value=values[i];
+            if (value==0 || value>requested) continue;
+            std::size_t copies=std::min(limits[i],requested/value);
+            for (std::size_t chunk=1;copies;) {
+                std::size_t take=std::min(chunk,copies);
+                copies-=take;
+                std::size_t cost=take*value;
+                for (std::size_t sum=requested;sum>=cost;--sum) {
+                    if (best[sum-cost]!=kInf &&
+                        best[sum-cost]+take<best[sum]) {
+                        best[sum]=best[sum-cost]+take;
+                        plans[sum]=std::make_shared<Node>(Node{plans[sum-cost],i,take});
+                    }
+                    if (sum==cost) break;
+                }
+                if (chunk>requested/2) chunk=requested;else chunk*=2;
+            }
+        }
+    }
+    for (std::size_t sum=requested;sum>0;--sum) {
+        if (best[sum]==kInf || best[sum]>max_coins) continue;
+        std::vector<std::size_t> counts(values.size(),0);
+        if (stock) {
+            for (auto path=plans[sum];path;path=path->prior)
+                counts[path->index]+=path->count;
+        } else {
+            for (std::size_t s=sum;s>0;s=previous[s]) {
+                if (index[s]>=values.size() || previous[s]>=s) return 0;
+                ++counts[index[s]];
+            }
+        }
+        BigInt candidate{nullptr};
+        std::string value=std::to_string(sum);
+        if (!bigint_init(&candidate,value.c_str())) return 0;
+        if (!set_result(counts,result)) {bigint_free(&candidate);return 0;}
+        bigint_free(covered);
+        *covered=candidate;
+        return 1;
+    }
+    return 0;
+}
+
 template <typename Solver>
 int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solver solver) {
     std::size_t requested = 0;
@@ -233,8 +308,10 @@ int calcular_cambio_optimo_stock_con_rango(const BigInt *m, const BigIntArray *d
 int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t hi, BigIntArray *s) { return solve(m, d, st, 0, hi, s); }
 
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
 int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (lo==0) return solve_near_single_pass(m,d,st,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, st, lo, hi, out); });
 }

@@ -57,3 +57,7 @@ contra un oráculo de búsqueda exhaustiva independiente.
 Comprueba exactitud del monto, mínimos de piezas, límites de inventario y
 cambio cercano. La búsqueda de cambio cercano descarta importe cubierto
 cero de acuerdo con el contrato del C original.
+
+## Optimización de cambio cercano
+
+Para límites de monedas con mínimo cero, `solve_near_single_pass` reutiliza una sola tabla dinámica y localiza el mayor importe no nulo alcanzable. Evita el comportamiento cuadrático de calcular todo desde cero para cada céntimo inferior. Las pruebas cubren importes elevados y ausencia de cambio válido.
