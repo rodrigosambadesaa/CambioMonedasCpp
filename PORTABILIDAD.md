@@ -61,3 +61,7 @@ cero de acuerdo con el contrato del C original.
 ## Optimización de cambio cercano
 
 Para límites de monedas con mínimo cero, `solve_near_single_pass` reutiliza una sola tabla dinámica y localiza el mayor importe no nulo alcanzable. Evita el comportamiento cuadrático de calcular todo desde cero para cada céntimo inferior. Las pruebas cubren importes elevados y ausencia de cambio válido.
+
+## GUI con persistencia protegida
+
+La GUI Win32 y la interfaz portable ya no utilizan los valores de stock en memoria para sobrescribir el fichero completo. El panel administrador utiliza `ajustar_stock_moneda_transaccional`; las devoluciones limitadas en Windows utilizan `consumir_stock_moneda_transaccional`. La operación se confirma en pantalla únicamente tras persistirse. En caso de conflicto, el inventario se vuelve a cargar. La GUI nativa Swift de macOS conserva su implementación independiente pendiente de unificación.

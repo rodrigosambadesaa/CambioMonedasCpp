@@ -220,7 +220,6 @@ int main(void)
             char accion[32];
             size_t idxDen = 0;
             BigInt delta = {0};
-            BigInt nuevo = {0};
             int esSuma;
 
             imprimir_panel(monedas[idxMoneda], &denom, &stock);
@@ -272,42 +271,22 @@ int main(void)
                 continue;
             }
 
-            if (esSuma)
+            BigIntArray persisted = {};
+            if (!ajustar_stock_moneda_transaccional(monedas[idxMoneda], idxDen,
+                                                    &delta, esSuma, &persisted))
             {
-                if (!bigint_add(&stock.items[idxDen], &delta, &nuevo))
-                {
-                    printf("No se pudo sumar stock.\n");
-                    bigint_free(&delta);
-                    bigint_free(&nuevo);
-                    continue;
-                }
+                printf("Inventario insuficiente, modificado o error al guardar.\n");
+                bigint_array_free(&stock);
+                cargar_stock_moneda(monedas[idxMoneda], &stock);
             }
             else
             {
-                if (bigint_compare(&stock.items[idxDen], &delta) < 0 || !bigint_subtract(&stock.items[idxDen], &delta, &nuevo))
-                {
-                    printf("No se pudo quitar stock (insuficiente o error).\n");
-                    bigint_free(&delta);
-                    bigint_free(&nuevo);
-                    continue;
-                }
-            }
-
-            if (!bigint_array_set(&stock, idxDen, &nuevo))
-            {
-                printf("No se pudo aplicar cambio en memoria.\n");
-                bigint_free(&delta);
-                bigint_free(&nuevo);
-                continue;
-            }
-
-            if (!actualizar_stock_moneda(monedas[idxMoneda], &stock))
-                printf("No se pudo persistir stock en archivo.\n");
-            else
+                bigint_array_free(&stock);
+                stock = persisted;
                 printf("Stock actualizado correctamente.\n");
+            }
 
             bigint_free(&delta);
-            bigint_free(&nuevo);
         }
 
         bigint_array_free(&denom);
