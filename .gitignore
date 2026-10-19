@@ -30,3 +30,7 @@ nbproject/
 !.vscode/.gitkeep
 .DS_Store
 Thumbs.db
+
+# Inventory lock and safe staging
+stock.txt.lock
+.stock-tx-*.tmp

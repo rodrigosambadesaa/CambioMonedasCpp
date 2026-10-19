@@ -75,6 +75,8 @@ endif
 test: $(TARGET)
 	$(CXX) $(CXXFLAGS) -I. tests/test_bigint_algoritmo.cpp algoritmo_cambio.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_tests
 	./progvoraz_tests
+	$(CXX) $(CXXFLAGS) -I. tests/test_stock_tx.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_stock_tests
+	./progvoraz_stock_tests
 	./$(TARGET) --help
 	./$(TARGET) --input tests/sample_batch.csv --output tests/batch_out.csv
 	grep 'OK total=' tests/batch_out.csv
@@ -83,7 +85,7 @@ test: $(TARGET)
 	./$(TARGET) --convert EUR USD 100 | grep 'Destino=109'
 
 clean:
-	rm -f progvoraz progvoraz.exe progvoraz_gui progvoraz_gui.exe temporal.exe stock.tmp progvoraz_tests tests/batch_out.csv tests/stock_out.json tests/report_out.txt *.o
+	rm -f progvoraz progvoraz.exe progvoraz_gui progvoraz_gui.exe temporal.exe stock.tmp progvoraz_tests progvoraz_stock_tests tests/batch_out.csv tests/stock_out.json tests/report_out.txt *.o
 
 help:
 	@echo "Targets disponibles:"

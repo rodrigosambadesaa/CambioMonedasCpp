@@ -544,7 +544,7 @@ static void imprimir_stock_administrador(const BigIntArray *monedas, const BigIn
     dibujar_linea();
 }
 
-static int aplicar_cambio_administrador(BigIntArray *stock, size_t idx, const BigInt *delta, int esSuma)
+[[maybe_unused]] static int aplicar_cambio_administrador(BigIntArray *stock, size_t idx, const BigInt *delta, int esSuma)
 {
     BigInt nuevo = {0};
 
@@ -771,17 +771,20 @@ int main(int argc, char **argv)
                         continue;
                     }
 
-                    if (!aplicar_cambio_administrador(&stock, idxDenom, &delta, esSuma))
+                    BigIntArray stockNuevo = {};
+                    if (!ajustar_stock_moneda_transaccional(monedaClave, idxDenom,
+                                                            &delta, esSuma, &stockNuevo))
                     {
-                        bigint_free(&delta);
                         printf("No se pudo aplicar el cambio de stock (revisa disponibilidad).\n");
-                        continue;
+                        bigint_array_free(&stock);
+                        cargar_stock_moneda(monedaClave, &stock);
                     }
-
-                    if (!actualizar_stock_moneda(monedaClave, &stock))
-                        printf("No se pudo actualizar el archivo de stock.\n");
                     else
+                    {
+                        bigint_array_free(&stock);
+                        stock = stockNuevo;
                         printf("Stock actualizado correctamente.\n");
+                    }
 
                     bigint_free(&delta);
                     continue;
@@ -834,9 +837,19 @@ int main(int argc, char **argv)
                     resultado = cambio_stock(&cantidad, &monedas, &solucion, &stock);
                     if (resultado)
                     {
-                        imprimir_resultado(&monedas, &solucion, &stock, 1);
-                        if (!actualizar_stock_moneda(monedaClave, &stock))
-                            printf("No se pudo actualizar el archivo de stock.\n");
+                        BigIntArray stockNuevo = {};
+                        if (consumir_stock_moneda_transaccional(monedaClave, &solucion, &stockNuevo))
+                        {
+                            bigint_array_free(&stock);
+                            stock = stockNuevo;
+                            imprimir_resultado(&monedas, &solucion, &stock, 1);
+                        }
+                        else
+                        {
+                            printf("Inventario modificado por otro proceso o error al persistir.\n");
+                            bigint_array_free(&stock);
+                            cargar_stock_moneda(monedaClave, &stock);
+                        }
                     }
                     else
                     {

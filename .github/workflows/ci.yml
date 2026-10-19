@@ -122,6 +122,8 @@ jobs:
         run: |
           g++ -std=c++20 -Wall -Wextra -Wpedantic -I. tests/test_bigint_algoritmo.cpp algoritmo_cambio.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_tests.exe
           .\progvoraz_tests.exe
+          g++ -std=c++20 -Wall -Wextra -Wpedantic -I. tests/test_stock_tx.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_stock_tests.exe
+          .\progvoraz_stock_tests.exe
           .\progvoraz.exe --input tests/sample_batch.csv --output batch_out.csv
           if (-not (Select-String -Path batch_out.csv -Pattern 'OK total=')) { throw 'batch sin resultados' }
           .\progvoraz.exe --export-stock-json stock_out.json
