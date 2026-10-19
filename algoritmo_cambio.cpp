@@ -3,6 +3,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace {
 constexpr std::size_t kMaxAmount = 500000;
@@ -37,8 +38,12 @@ bool set_result(const std::vector<std::size_t> &counts, BigIntArray *out) {
 bool read_values(const BigIntArray *a, std::size_t amount, std::vector<std::size_t> *out) {
     if (!a || !a->items || !a->len || !out) return false;
     out->assign(a->len, 0);
-    for (std::size_t i = 0; i < a->len; ++i)
-        if (!to_size(&a->items[i], amount, &(*out)[i])) return false;
+    for (std::size_t i = 0; i < a->len; ++i) {
+        const char *p = a->items[i].digits;
+        if (!p || !*p) return false;
+        for (const char *c = p; *c; ++c) if (*c < '0' || *c > '9') return false;
+        if (!to_size(&a->items[i], amount, &(*out)[i])) (*out)[i] = amount + 1;
+    }
     return true;
 }
 
@@ -72,34 +77,83 @@ bool solve_limited(std::size_t amount, const std::vector<std::size_t> &values,
                    std::size_t max_coins, std::vector<std::size_t> *counts) {
     max_coins = std::min(max_coins, amount + 1);
     if (values.size() != stock.size() || min_coins > max_coins) return false;
-    std::vector<std::size_t> best(amount + 1, kInf), prev(amount + 1), coin(amount + 1, values.size());
+    struct Node {
+        std::shared_ptr<const Node> prev;
+        std::size_t index, quantity;
+    };
+    std::vector<std::shared_ptr<const Node>> plans(amount + 1);
+    std::vector<std::size_t> best(amount + 1, kInf);
     best[0] = 0;
     for (std::size_t i = 0; i < values.size(); ++i) {
         std::size_t v = values[i];
-        if (!v) continue;
+        if (!v || v > amount) continue;
         std::size_t copies = std::min(stock[i], amount / v);
-        for (std::size_t k = 0; k < copies; ++k) {
-            for (std::size_t sum = amount; sum >= v; --sum) {
-                if (best[sum - v] != kInf && best[sum - v] + 1 < best[sum]) {
-                    best[sum] = best[sum - v] + 1; prev[sum] = sum - v; coin[sum] = i;
+        // Binary grouping makes bounded knapsack O(amount * log(stock)).
+        for (std::size_t chunk = 1; copies;) {
+            std::size_t take = std::min(chunk, copies);
+            copies -= take;
+            std::size_t cost = take * v;
+            for (std::size_t sum = amount; sum >= cost; --sum) {
+                if (best[sum - cost] != kInf && best[sum - cost] + take < best[sum]) {
+                    best[sum] = best[sum - cost] + take;
+                    plans[sum] = std::make_shared<Node>(Node{plans[sum - cost], i, take});
                 }
-                if (sum == v) break;
+                if (sum == cost) break;
             }
+            if (chunk > amount / 2) chunk = amount; else chunk *= 2;
         }
     }
     if (best[amount] == kInf || best[amount] < min_coins || best[amount] > max_coins) return false;
     counts->assign(values.size(), 0);
-    for (std::size_t sum = amount; sum; sum = prev[sum]) {
-        if (coin[sum] >= values.size() || prev[sum] >= sum) return false;
-        ++(*counts)[coin[sum]];
+    auto plan = plans[amount];
+    while (plan) {
+        (*counts)[plan->index] += plan->quantity;
+        plan = plan->prev;
     }
     return true;
+}
+
+int solve_large(const BigInt *amount, const BigIntArray *denom, const BigIntArray *stock,
+                std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
+    if (!amount || !denom || !denom->items || !result || (stock && stock->len != denom->len)) return 0;
+    BigInt remaining{nullptr}, count{nullptr};
+    if (!bigint_set(&remaining, amount) || !bigint_init(&count, "0") ||
+        !bigint_array_create(result, denom->len)) {
+        bigint_free(&remaining); bigint_free(&count); return 0;
+    }
+    bool ok = true;
+    for (std::size_t i = 0; i < denom->len && ok; ++i) {
+        BigInt q{nullptr}, r{nullptr}, product{nullptr}, next{nullptr}, sum{nullptr};
+        ok = !bigint_is_zero(&denom->items[i]) && bigint_divmod(&remaining, &denom->items[i], &q, &r);
+        if (ok && stock && bigint_compare(&q, &stock->items[i]) > 0) {
+            bigint_free(&q); q = {nullptr};
+            ok = bigint_set(&q, &stock->items[i]);
+        }
+        if (ok) ok = bigint_multiply(&q, &denom->items[i], &product)
+                   && bigint_subtract(&remaining, &product, &next)
+                   && bigint_add(&count, &q, &sum)
+                   && bigint_array_set(result, i, &q);
+        if (ok) { bigint_free(&remaining); remaining = next; next = {nullptr};
+                  bigint_free(&count); count = sum; sum = {nullptr}; }
+        bigint_free(&q); bigint_free(&r); bigint_free(&product);
+        bigint_free(&next); bigint_free(&sum);
+    }
+    BigInt lower{nullptr}, upper{nullptr};
+    std::string lo = std::to_string(min_coins), hi = std::to_string(max_coins);
+    ok = ok && bigint_is_zero(&remaining) && bigint_init(&lower, lo.c_str())
+            && bigint_init(&upper, hi.c_str())
+            && bigint_compare(&count, &lower) >= 0 && bigint_compare(&count, &upper) <= 0;
+    bigint_free(&remaining); bigint_free(&count); bigint_free(&lower); bigint_free(&upper);
+    if (!ok) bigint_array_free(result);
+    return ok ? 1 : 0;
 }
 
 int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *stock,
           std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
     std::size_t requested = 0;
-    if (!amount || !denom || !result || !to_size(amount, kMaxAmount, &requested)) return 0;
+    if (!amount || !denom || !result) return 0;
+    if (!to_size(amount, kMaxAmount, &requested))
+        return solve_large(amount, denom, stock, min_coins, max_coins, result);
     std::vector<std::size_t> values;
     if (!read_values(denom, requested, &values)) return 0;
     std::vector<std::size_t> counts;

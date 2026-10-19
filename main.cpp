@@ -1,3 +1,4 @@
+#include "portable_cli.h"
 /*
  * main.cpp
  *
@@ -570,8 +571,9 @@ static int aplicar_cambio_administrador(BigIntArray *stock, size_t idx, const Bi
     return 1;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc > 1) return run_portable_cli(argc, argv);
     char moneda[MAX_MONEDA_NOMBRE + 1];
     char monedaClave[MAX_MONEDA_NOMBRE + 1];
     char monedaCmd[MAX_MONEDA_NOMBRE + 1];
