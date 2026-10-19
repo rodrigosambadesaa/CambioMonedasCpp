@@ -17,6 +17,7 @@
 #include "moneda_gestion.h"
 #include <algorithm>
 #include <cctype>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -518,6 +519,7 @@ int run_portable_cli(int argc, char **argv) {
                   << "--lang es|en --export-stock-json FILE --export-report FILE\n"
                   << "--snapshot-stock FILE --restore-stock FILE --convert FROM TO CENTS [--convert-stock]\n"
                   << "--specific CURRENCY RECEIVED_CSV RETURNED_CSV [--specific-stock]\n"
+                  << "--history [--tail N] --summary CURRENCY\n"
                   << "--server [--port N] (127.0.0.1) --help --version\n";
         return 0;
     }
@@ -555,6 +557,40 @@ int run_portable_cli(int argc, char **argv) {
 
         Blocks denoms = read_blocks("monedas.txt");
         Blocks stocks = read_blocks("stock.txt", true);
+        if (has(args,"--history")) {
+            std::size_t limit=100;
+            if (auto value=flag_value(args,"--tail")) {
+                if (!nonnegative_size(*value,limit) || limit<1 || limit>1000)
+                    throw std::invalid_argument("Limite de historial permitido: 1-1000");
+            }
+            std::ifstream history("historial.txt");
+            std::deque<std::string> recent;
+            std::string line;
+            while (std::getline(history,line)) {
+                recent.push_back(line);
+                if (recent.size()>limit) recent.pop_front();
+            }
+            for(const auto &entry:recent) std::cout<<entry<<'\n';
+            return 0;
+        }
+        if (has(args,"--summary")) {
+            auto value=flag_value(args,"--summary");
+            if (!value) throw std::invalid_argument("Indique divisa para --summary");
+            std::string key=currency(*value);
+            if (!valid(key,denoms,stocks))
+                throw std::invalid_argument("Moneda inexistente o inventario inconsistente");
+            const auto &d=denoms.at(key),&s=stocks.at(key);
+            std::string pieces="0",total="0";
+            for(size_t i=0;i<d.size();++i) {
+                pieces=decimal_add(pieces,s[i]);
+                total=decimal_add(total,decimal_multiply(d[i],s[i]));
+            }
+            std::cout<<"Moneda="<<key<<" Denominaciones="<<d.size()
+                     <<" Min="<<d.back()<<" Max="<<d.front()
+                     <<" Piezas="<<pieces<<" ValorCentimos="<<total<<'\n';
+            return 0;
+        }
+
         if (has(args, "--export-stock-json") || has(args, "--export-report")) {
             auto json = flag_value(args, "--export-stock-json");
             auto report = flag_value(args, "--export-report");

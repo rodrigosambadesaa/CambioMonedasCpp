@@ -79,3 +79,13 @@ con inventario verifica que \`stock + recibido - entregado >= 0\`
 para cada denominación y no sobrescribe el fichero en caso de error.
 Incluye pruebas de transacción válida, falta de inventario y cantidades
 monetarias diferentes en la matriz de GitHub Actions.
+
+
+## Historial y resumen por divisa
+
+La CLI implementa \`--history [--tail N]\`, con hasta 1000 registros,
+y \`--summary EUR\`, con totales de piezas y valor calculados mediante
+\`BigInt\`. El fichero \`historial.txt\` utiliza la marca de tiempo
+\`[YYYY-MM-DD HH:MM:SS]\` del original. El backend añade un registro
+después de cada actualización de stock confirmada. El historial es
+*best effort*: no forma una transacción ACID conjunta con el inventario.
