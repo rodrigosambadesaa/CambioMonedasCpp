@@ -14,6 +14,7 @@
 #include "portable_cli.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
+#include "moneda_gestion.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -516,6 +517,7 @@ int run_portable_cli(int argc, char **argv) {
         std::cout << "ProgVoraz C++ --input CSV [--output CSV] [--log LOG] | --stream | --docker\n"
                   << "--lang es|en --export-stock-json FILE --export-report FILE\n"
                   << "--snapshot-stock FILE --restore-stock FILE --convert FROM TO CENTS [--convert-stock]\n"
+                  << "--specific CURRENCY RECEIVED_CSV RETURNED_CSV [--specific-stock]\n"
                   << "--server [--port N] (127.0.0.1) --help --version\n";
         return 0;
     }
@@ -563,6 +565,48 @@ int run_portable_cli(int argc, char **argv) {
             if (json) export_json(out, denoms, stocks);
             else export_report(out, denoms, stocks);
             if (!out) throw std::runtime_error("Error escribiendo " + path);
+            return 0;
+        }
+
+        auto specific=std::find(args.begin(),args.end(),"--specific");
+        if (specific!=args.end()) {
+            size_t pos=static_cast<size_t>(specific-args.begin());
+            if (pos+3>=args.size())
+                throw std::invalid_argument("Se requiere divisa y dos listas de cantidades");
+            std::string key=currency(args[pos+1]);
+            if (!valid(key,denoms,stocks))
+                throw std::invalid_argument("Moneda desconocida o inconsistente");
+            auto incoming=split(args[pos+2],',');
+            auto outgoing=split(args[pos+3],',');
+            const auto &values=denoms.at(key);
+            if (incoming.size()!=values.size() || outgoing.size()!=values.size())
+                throw std::invalid_argument("Numero incorrecto de denominaciones");
+            if (!std::all_of(incoming.begin(),incoming.end(),numeric) ||
+                !std::all_of(outgoing.begin(),outgoing.end(),numeric))
+                throw std::invalid_argument("Cantidades de monedas invalidas");
+            std::string in_value="0",out_value="0";
+            for (size_t i=0;i<values.size();++i) {
+                in_value=decimal_add(in_value,decimal_multiply(values[i],incoming[i]));
+                out_value=decimal_add(out_value,decimal_multiply(values[i],outgoing[i]));
+            }
+            if (in_value!=out_value)
+                throw std::runtime_error("Importes entregados y devueltos distintos");
+            std::vector<std::string> balance=stocks.at(key);
+            if (has(args,"--specific-stock")) {
+                OwnedArray incoming_bi(incoming),outgoing_bi(outgoing);
+                BigIntArray updated{};
+                if (!intercambiar_stock_moneda_transaccional(
+                    key.c_str(),&incoming_bi.value,&outgoing_bi.value,&updated))
+                    throw std::runtime_error("Inventario insuficiente o error de persistencia");
+                balance.clear();
+                for (size_t i=0;i<updated.len;++i)
+                    balance.emplace_back(updated.items[i].digits);
+                bigint_array_free(&updated);
+            }
+            std::cout<<"OK moneda="<<key<<" total_centimos="<<in_value<<'\n';
+            for(size_t i=0;i<values.size();++i)
+                std::cout<<values[i]<<" recibido="<<incoming[i]
+                         <<" entregado="<<outgoing[i]<<" stock="<<balance[i]<<'\n';
             return 0;
         }
 

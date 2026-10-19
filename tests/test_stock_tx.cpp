@@ -61,6 +61,25 @@ int main() {
         assert(cargar_stock_moneda("dolar",&other));
         assert(std::string(other.items[0].digits)=="1");
         bigint_array_free(&other);
+        Array incoming({"0","0","5"}),outgoing({"1","0","0"});
+        BigIntArray exchanged{};
+        assert(intercambiar_stock_moneda_transaccional("euro",&incoming.value,
+                                                        &outgoing.value,&exchanged));
+        assert(std::string(exchanged.items[0].digits)=="1");
+        assert(std::string(exchanged.items[1].digits)=="1");
+        assert(std::string(exchanged.items[2].digits)=="5");
+        bigint_array_free(&exchanged);
+        Array bad_input({"0","2","0"}),bad_output({"0","0","6"});
+        assert(!intercambiar_stock_moneda_transaccional("euro",&bad_input.value,
+                                                         &bad_output.value,&exchanged));
+        Array wrong_input({"0","0","1"});
+        assert(!intercambiar_stock_moneda_transaccional("euro",&wrong_input.value,
+                                                         &outgoing.value,&exchanged));
+        BigIntArray unchanged{};
+        assert(cargar_stock_moneda("euro",&unchanged));
+        assert(std::string(unchanged.items[0].digits)=="1");
+        assert(std::string(unchanged.items[2].digits)=="5");
+        bigint_array_free(&unchanged);
         std::cout << "OK: stock atomico, limites de bloque, consumo y administrador\n";
     } catch (...) {
         fs::current_path(original);
