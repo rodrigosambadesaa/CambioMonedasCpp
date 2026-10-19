@@ -15,7 +15,11 @@ ejecutar código C del repositorio de referencia.
   seguridad y restauración después de verificar estructura.
 - \`--convert EUR EUR 500\`: conversión identidad y desglose.
 
-No se afirma paridad total: servidor HTTP, API de tasas reales, JSON remoto,
+El servidor HTTP C++20 expone `GET /health`, `GET /export_stock_json` y
+`POST /batch` únicamente por 127.0.0.1. La carga de POST se limita a 1 MiB,
+las cabeceras a 32 KiB y no se usan archivos temporales compartidos.
+
+No se afirma paridad total: API de tasas reales, JSON remoto,
 historial exhaustivo y nueva GUI multiplataforma requieren ports adicionales.
 \`--convert EUR USD\` falla de forma explícita si no existe proveedor de tasas.
 

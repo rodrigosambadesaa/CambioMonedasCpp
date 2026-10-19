@@ -1,3 +1,15 @@
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#endif
+#include <limits>
+
 #include "portable_cli.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
@@ -299,6 +311,142 @@ bool has(const std::vector<std::string> &args, const std::string &flag) {
     return std::find(args.begin(), args.end(), flag) != args.end();
 }
 
+
+#ifdef _WIN32
+using HttpSocket = SOCKET;
+const HttpSocket InvalidHttpSocket = INVALID_SOCKET;
+void close_http(HttpSocket s) { closesocket(s); }
+#else
+using HttpSocket = int;
+const HttpSocket InvalidHttpSocket = -1;
+void close_http(HttpSocket s) { close(s); }
+#endif
+
+void send_http(HttpSocket client, int code, const std::string &reason,
+               const std::string &mime, const std::string &content) {
+    std::string header = "HTTP/1.1 " + std::to_string(code) + " " + reason + "\r\n"
+        "Content-Type: " + mime + "\r\n"
+        "Content-Length: " + std::to_string(content.size()) + "\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "Cache-Control: no-store\r\n"
+        "Connection: close\r\n\r\n";
+    std::string response = header + content;
+    std::size_t sent = 0;
+    while (sent < response.size()) {
+        auto size = static_cast<int>(std::min<std::size_t>(response.size() - sent, 8192));
+        int n = send(client, response.data() + sent, size, 0);
+        if (n <= 0) break;
+        sent += static_cast<std::size_t>(n);
+    }
+}
+
+void handle_http(HttpSocket client) {
+    constexpr std::size_t kMaxBody = 1024 * 1024;
+    constexpr std::size_t kMaxHeaders = 32768;
+    std::string request;
+    char buffer[4096];
+    std::size_t header_end = std::string::npos;
+    while ((header_end = request.find("\r\n\r\n")) == std::string::npos) {
+        if (request.size() > kMaxHeaders) {
+            send_http(client, 431, "Request Header Fields Too Large", "text/plain", "Headers Too Large");
+            return;
+        }
+        int n = recv(client, buffer, sizeof(buffer), 0);
+        if (n <= 0) return;
+        request.append(buffer, static_cast<std::size_t>(n));
+    }
+    std::istringstream input(request.substr(0, header_end + 2));
+    std::string method, path, protocol, first_line;
+    if (!std::getline(input, first_line)) return;
+    {
+        std::istringstream first(first_line);
+        first >> method >> path >> protocol;
+    }
+    std::string line;
+    std::optional<std::size_t> content_length;
+    while (std::getline(input, line)) {
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        std::string name = lowercase(trim(line.substr(0, colon)));
+        if (name == "content-length") {
+            std::size_t parsed = 0;
+            if (!nonnegative_size(trim(line.substr(colon + 1)), parsed)) {
+                send_http(client, 400, "Bad Request", "text/plain", "Invalid Content-Length");
+                return;
+            }
+            content_length = parsed;
+        }
+    }
+    if (method == "POST" && path == "/batch") {
+        if (!content_length) {
+            send_http(client, 411, "Length Required", "text/plain", "Length Required"); return;
+        }
+        if (*content_length > kMaxBody) {
+            send_http(client, 413, "Payload Too Large", "text/plain", "Payload Too Large"); return;
+        }
+        std::size_t start = header_end + 4;
+        while (request.size() < start + *content_length) {
+            int n = recv(client, buffer, sizeof(buffer), 0);
+            if (n <= 0) return;
+            request.append(buffer, static_cast<std::size_t>(n));
+        }
+        std::istringstream csv(request.substr(start, *content_length));
+        std::ostringstream out;
+        Blocks denominations = read_blocks("monedas.txt");
+        Blocks stocks = read_blocks("stock.txt", true);
+        process_batch(csv, out, nullptr, false, denominations, stocks);
+        send_http(client, 200, "OK", "text/csv; charset=utf-8", out.str());
+        return;
+    }
+    if (method == "GET" && path == "/health") {
+        send_http(client, 200, "OK", "text/plain; charset=utf-8", "OK"); return;
+    }
+    if (method == "GET" && path == "/export_stock_json") {
+        Blocks denominations = read_blocks("monedas.txt");
+        Blocks stocks = read_blocks("stock.txt", true);
+        std::ostringstream out;
+        export_json(out, denominations, stocks);
+        send_http(client, 200, "OK", "application/json; charset=utf-8", out.str());
+        return;
+    }
+    send_http(client, 404, "Not Found", "text/plain", "Not Found");
+}
+
+int serve_local_http(int port) {
+    if (port < 1 || port > 65535) throw std::invalid_argument("Puerto HTTP invalido");
+#ifdef _WIN32
+    WSADATA winsock{};
+    if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0)
+        throw std::runtime_error("Winsock no disponible");
+#endif
+    HttpSocket listening = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listening == InvalidHttpSocket) throw std::runtime_error("No se puede abrir socket HTTP");
+#ifndef _WIN32
+    int reuse = 1;
+    setsockopt(listening, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
+    sockaddr_in bind_address{};
+    bind_address.sin_family = AF_INET;
+    bind_address.sin_port = htons(static_cast<unsigned short>(port));
+    bind_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1 ONLY
+    if (bind(listening, reinterpret_cast<sockaddr*>(&bind_address), sizeof(bind_address)) != 0 ||
+        listen(listening, 16) != 0) {
+        close_http(listening);
+        throw std::runtime_error("No se pudo escuchar en 127.0.0.1");
+    }
+    std::cout << "Servidor HTTP local 127.0.0.1:" << port << std::endl;
+    for (;;) {
+        HttpSocket client = accept(listening, nullptr, nullptr);
+        if (client == InvalidHttpSocket) continue;
+        try { handle_http(client); }
+        catch (const std::exception &ex) {
+            std::cerr << "HTTP: " << ex.what() << '\n';
+            send_http(client, 500, "Internal Server Error", "text/plain", "Internal Error");
+        }
+        close_http(client);
+    }
+}
+
 } // namespace
 
 int run_portable_cli(int argc, char **argv) {
@@ -308,7 +456,7 @@ int run_portable_cli(int argc, char **argv) {
         std::cout << "ProgVoraz C++ --input CSV [--output CSV] [--log LOG] | --stream | --docker\n"
                   << "--lang es|en --export-stock-json FILE --export-report FILE\n"
                   << "--snapshot-stock FILE --restore-stock FILE --convert FROM TO CENTS [--convert-stock]\n"
-                  << "--help --version\n";
+                  << "--server [--port N] (127.0.0.1) --help --version\n";
         return 0;
     }
     if (has(args, "--version") || has(args, "-v")) {
@@ -316,6 +464,13 @@ int run_portable_cli(int argc, char **argv) {
         return 0;
     }
     try {
+        if (has(args, "--server")) {
+            std::string portText = flag_value(args, "--port").value_or("8080");
+            std::size_t port = 0;
+            if (!nonnegative_size(portText, port) || port == 0 || port > 65535)
+                throw std::runtime_error("Puerto HTTP invalido");
+            return serve_local_http(static_cast<int>(port));
+        }
         if (has(args, "--restore-stock")) {
             std::string path = flag_value(args, "--restore-stock").value_or("");
             if (path.empty()) throw std::runtime_error("Falta ruta de snapshot");
