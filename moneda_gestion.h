@@ -39,5 +39,8 @@ int intercambiar_stock_moneda_transaccional(const char *nombreMoneda,
             const BigIntArray *recibidas, const BigIntArray *entregadas,
             BigIntArray *stock_actualizado);
 
+/* Restaurar el snapshot validado bajo el mismo bloqueo de las transacciones. */
+int restaurar_snapshot_stock_transaccional(const char *rutaSnapshot);
+
 #endif
 

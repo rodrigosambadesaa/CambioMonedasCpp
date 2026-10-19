@@ -89,6 +89,23 @@ int main() {
             ++lines;
         }
         assert(lines==4); // consumo, dos ajustes y cambio especifico
+        {
+            std::ofstream backup("backup.txt");
+            backup<<"euro\n4\n2\n-1\ndolar\n1\n2\n";
+            std::ofstream invalid("invalid.txt");
+            invalid<<"euro\n7\n8\ndolar\n1\n2\n";
+        }
+        assert(!restaurar_snapshot_stock_transaccional("invalid.txt"));
+        BigIntArray baseline{};
+        assert(cargar_stock_moneda("euro",&baseline));
+        assert(std::string(baseline.items[0].digits)=="1");
+        bigint_array_free(&baseline);
+        assert(restaurar_snapshot_stock_transaccional("backup.txt"));
+        assert(cargar_stock_moneda("euro",&baseline));
+        assert(std::string(baseline.items[0].digits)=="4");
+        assert(std::string(baseline.items[1].digits)=="2");
+        bigint_array_free(&baseline);
+
         std::cout << "OK: stock atomico, limites de bloque, consumo y administrador\n";
     } catch (...) {
         fs::current_path(original);

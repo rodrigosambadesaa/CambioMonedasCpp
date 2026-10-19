@@ -89,3 +89,14 @@ y \`--summary EUR\`, con totales de piezas y valor calculados mediante
 \`[YYYY-MM-DD HH:MM:SS]\` del original. El backend añade un registro
 después de cada actualización de stock confirmada. El historial es
 *best effort*: no forma una transacción ACID conjunta con el inventario.
+
+
+## Snapshot con bloqueo transaccional
+
+La restauración \`--restore-stock\` utiliza
+\`restaurar_snapshot_stock_transaccional\` y el mismo bloqueo que los
+consumos, cambios de caja y ajustes de stock. El archivo se valida por
+todas las divisas y sus longitudes antes de reemplazarlo mediante
+el mecanismo de staging con sustitución de destino usado por el backend.
+No se borra primero el inventario de Windows. Se incluyen pruebas de
+snapshot incompleto (sin mutación) y restauración correcta.

@@ -536,16 +536,10 @@ int run_portable_cli(int argc, char **argv) {
             return serve_local_http(static_cast<int>(port));
         }
         if (has(args, "--restore-stock")) {
-            std::string path = flag_value(args, "--restore-stock").value_or("");
-            if (path.empty()) throw std::runtime_error("Falta ruta de snapshot");
-            Blocks denom = read_blocks("monedas.txt"), candidate = read_blocks(path, true);
-            for (const auto &[key, values] : denom)
-                if (!valid(key, denom, candidate)) throw std::runtime_error("Snapshot inconsistente: " + key);
-            fs::path temp = "stock.restore.tmp";
-            fs::copy_file(path, temp, fs::copy_options::overwrite_existing);
-            try {
-                fs::rename(temp, "stock.txt");
-            } catch (...) { fs::remove(temp); throw; }
+            auto path=flag_value(args,"--restore-stock");
+            if (!path || path->empty()) throw std::invalid_argument("Falta ruta de snapshot");
+            if (!restaurar_snapshot_stock_transaccional(path->c_str()))
+                throw std::runtime_error("Snapshot no válido o error al restaurar inventario");
             return 0;
         }
         if (has(args, "--snapshot-stock")) {
