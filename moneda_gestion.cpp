@@ -13,6 +13,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <sstream>
 #include <functional>
 #include <string>
 #include <thread>
@@ -402,4 +404,67 @@ int intercambiar_stock_moneda_transaccional(const char *moneda,
         }
         return true;
     },stock_actualizado);
+}
+
+
+int restaurar_snapshot_stock_transaccional(const char *snapshot) {
+    if (!snapshot || !*snapshot) return 0;
+    try {
+        StockFileLock lock;  // serializa también consumo y cambio específico
+        std::ifstream input(snapshot,std::ios::binary);
+        if (!input) return 0;
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(input,line)) {
+            if (!line.empty() && line.back()=='\r') line.pop_back();
+            if (line.size()>4096 || lines.size()>=10000) return 0;
+            lines.push_back(line);
+        }
+        if (input.bad() || lines.empty()) return 0;
+        auto sections=[&](const std::vector<std::string> &all,bool is_stock) {
+            std::map<std::string,std::vector<std::string>> output;
+            std::string key,word;
+            for (const auto &ln:all) {
+                std::istringstream tokenizer(ln);
+                while (tokenizer>>word) {
+                    if (digits_only(word) || (is_stock && word=="-1")) {
+                        if (key.empty()) throw std::runtime_error("Token sin moneda");
+                        output[key].push_back(word);
+                    } else {
+                        key=word;
+                        if (output.contains(key))
+                            throw std::runtime_error("Divisa duplicada");
+                        output[key]={};
+                    }
+                }
+            }
+            return output;
+        };
+        std::ifstream denominationsFile("monedas.txt",std::ios::binary);
+        if (!denominationsFile) return 0;
+        std::vector<std::string> dlines;
+        while (std::getline(denominationsFile,line)) {
+            if (!line.empty() && line.back()=='\r') line.pop_back();
+            if (line.size()>4096 || dlines.size()>=10000) return 0;
+            dlines.push_back(line);
+        }
+        if (denominationsFile.bad()) return 0;
+        auto denominationSections=sections(dlines,false);
+        auto snapshotSections=sections(lines,true);
+        if (denominationSections.empty() ||
+            denominationSections.size()!=snapshotSections.size()) return 0;
+        for (const auto &[key,values]:denominationSections) {
+            auto found=snapshotSections.find(key);
+            if (values.empty() || found==snapshotSections.end() ||
+                found->second.size()!=values.size()) return 0;
+            for (const auto &v:found->second)
+                if (!digits_only(v) && v!="-1") return 0;
+        }
+        if (!replace_atomic(lines)) return 0;
+        {
+            std::ofstream audit("historial.txt",std::ios::app);
+            if (audit) audit<<"Snapshot de stock restaurado\n";
+        }
+        return 1;
+    } catch (...) {return 0;}
 }
