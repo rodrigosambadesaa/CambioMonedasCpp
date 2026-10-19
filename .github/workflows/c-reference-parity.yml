@@ -1,0 +1,29 @@
+name: C reference parity
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  differential-with-original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout port
+        uses: actions/checkout@v5
+      - name: Checkout pinned original C
+        uses: actions/checkout@v5
+        with:
+          repository: rodrigosambadesaa/CambioMonedas
+          ref: 7cb355933a8f24f19a284aa85f7c21575b0db61a
+          path: .ci/reference-c
+      - name: Build C reference independently
+        working-directory: .ci/reference-c
+        run: make release
+      - name: Build native C++ port
+        run: make release
+      - name: Compare batch outputs and exit semantics
+        run: python3 tests/compare_c_reference.py .ci/reference-c . cpp
