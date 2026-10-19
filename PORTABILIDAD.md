@@ -35,3 +35,15 @@ Se admite también `--convert USD EUR 109`. Las tasas del stub son ejemplos
 históricos de prueba y **no** cotizaciones actuales. No se ha añadido acceso
 HTTP a un proveedor financiero al port C++; si no existe el par en el stub,
 la aplicación falla explícitamente.
+
+
+## Consistencia transaccional de stock
+
+\`moneda_gestion.cpp\` serializa las escrituras cooperantes mediante bloqueo de
+\`stock.txt.lock\` (flock/Win32), valida la cantidad de denominaciones antes de
+escribir y reemplaza atómicamente \`stock.txt\`. El modo consola aplica consumos
+y ajustes desde el último valor persistido; si las piezas ya no están
+disponibles, rechaza la operación. Las GUI siguen usando el reemplazo de
+inventario absoluto, aunque ahora con escritura protegida, por lo que los
+cambios desde snapshots antiguos todavía pueden ser conflictivos. Las
+instancias en C# y C++ no comparten mecanismo de bloqueo.

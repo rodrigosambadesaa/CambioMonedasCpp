@@ -23,5 +23,14 @@ int cargar_stock_moneda(const char *nombreMoneda, BigIntArray *resultado);
  */
 int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock);
 
+
+/* Consumo y ajustes de inventario desde el stock persistido con bloqueo. */
+int consumir_stock_moneda_transaccional(const char *nombreMoneda,
+                                       const BigIntArray *consumo,
+                                       BigIntArray *stock_actualizado);
+int ajustar_stock_moneda_transaccional(const char *nombreMoneda, size_t indice,
+                                      const BigInt *delta, int esSuma,
+                                      BigIntArray *stock_actualizado);
+
 #endif
 

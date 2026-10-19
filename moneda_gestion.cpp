@@ -8,6 +8,21 @@
 #include <unistd.h>
 #endif
 #include "moneda_gestion.h"
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <string>
+#include <thread>
+#include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/file.h>
+#endif
+
 
 #define MAX_TOKEN 256
 #define MAX_DENOMINACIONES 64
@@ -126,150 +141,188 @@ int cargar_stock_moneda(const char *nombreMoneda, BigIntArray *resultado)
     return cargar_datos_moneda("stock.txt", nombreMoneda, 1, resultado);
 }
 
-int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock)
-{
-    FILE *archivo = fopen("stock.txt", "r");
-    char *lineas[MAX_LINEAS_STOCK];
-    char buffer[MAX_LINEA_STOCK];
-    char comparable[MAX_LINEA_STOCK];
-    size_t i;
-    size_t totalLineas = 0;
-    int ok = 1;
-    int actualizado = 0;
+namespace {
+namespace fs = std::filesystem;
 
-    if (archivo == NULL || stock == NULL || stock->items == NULL)
-        return 0;
-
-    for (i = 0; i < MAX_LINEAS_STOCK; i++)
-        lineas[i] = NULL;
-
-    while (fgets(buffer, sizeof(buffer), archivo) != NULL)
-    {
-        size_t len = strlen(buffer);
-
-        if (totalLineas >= MAX_LINEAS_STOCK)
-        {
-            ok = 0;
-            break;
-        }
-
-        if (len > 0 && buffer[len - 1] != '\n' && !feof(archivo))
-        {
-            ok = 0;
-            break;
-        }
-
-        lineas[totalLineas] = duplicar_cadena(buffer);
-        if (lineas[totalLineas] == NULL)
-        {
-            ok = 0;
-            break;
-        }
-        totalLineas++;
-    }
-
-    fclose(archivo);
-
-    if (ok)
-    {
-        for (size_t linea = 0; linea < totalLineas && !actualizado; linea++)
-        {
-            strncpy(comparable, lineas[linea], sizeof(comparable) - 1);
-            comparable[sizeof(comparable) - 1] = '\0';
-            recortar_fin_linea(comparable);
-
-            if (strcmp(comparable, nombreMoneda) != 0)
-                continue;
-
-            if (stock->len > totalLineas - (linea + 1))
-            {
-                ok = 0;
-                break;
-            }
-
-            for (i = 0; i < stock->len; i++)
-            {
-                size_t objetivo = linea + 1 + i;
-                char nuevaLinea[MAX_LINEA_STOCK];
-
-                if (bigint_is_zero(&stock->items[i]))
-                    snprintf(nuevaLinea, sizeof(nuevaLinea), "-1\n");
-                else
-                    snprintf(nuevaLinea, sizeof(nuevaLinea), "%s\n", stock->items[i].digits);
-
-                free(lineas[objetivo]);
-                lineas[objetivo] = duplicar_cadena(nuevaLinea);
-                if (lineas[objetivo] == NULL)
-                {
-                    ok = 0;
-                    break;
-                }
-            }
-
-            if (ok)
-                actualizado = 1;
-        }
-    }
-
-    if (!ok || !actualizado)
-    {
-        for (i = 0; i < totalLineas; i++)
-            free(lineas[i]);
-        return 0;
-    }
-
-    /* Escribir en archivo temporal y reemplazar el original para mayor seguridad */
-    {
-        FILE *tmp = fopen("stock.tmp", "w");
-        if (tmp == NULL)
-        {
-            for (i = 0; i < totalLineas; i++)
-                free(lineas[i]);
-            return 0;
-        }
-
-        for (i = 0; i < totalLineas; i++)
-        {
-            if (fputs(lineas[i], tmp) == EOF)
-            {
-                ok = 0;
-                break;
-            }
-        }
-
-        if (ok && fflush(tmp) != 0)
-            ok = 0;
-
-        if (fclose(tmp) != 0)
-            ok = 0;
-
-        if (!ok)
-        {
-            /* intentar borrar el temporal si algo falló */
-            remove("stock.tmp");
-            for (i = 0; i < totalLineas; i++)
-                free(lineas[i]);
-            return 0;
-        }
-
+bool digits_only(const std::string &text) {
+    return !text.empty() && std::all_of(text.begin(),text.end(),
+        [](unsigned char c){return c>='0' && c<='9';});
+}
+class StockFileLock {
 #ifdef _WIN32
-        /* En Windows, rename sobre un fichero existente puede fallar, eliminar primero */
-        remove("stock.txt");
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
 #else
-        /* En POSIX, replace con rename es atómico */
+    int fd_ = -1;
 #endif
-        if (rename("stock.tmp", "stock.txt") != 0)
-        {
-            /* si falla, intentar eliminar el temporal y retornar error */
-            remove("stock.tmp");
-            for (i = 0; i < totalLineas; i++)
-                free(lineas[i]);
-            return 0;
+public:
+    StockFileLock() {
+        for (int i=0; i<200; ++i) {
+#ifdef _WIN32
+            handle_=CreateFileA("stock.txt.lock",GENERIC_READ|GENERIC_WRITE,0,nullptr,
+                               OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+            if (handle_!=INVALID_HANDLE_VALUE) return;
+#else
+            if (fd_<0) fd_=open("stock.txt.lock",O_CREAT|O_RDWR,0600);
+            if (fd_>=0 && flock(fd_,LOCK_EX|LOCK_NB)==0) return;
+#endif
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        throw std::runtime_error("No se pudo bloquear stock.txt");
     }
+    StockFileLock(const StockFileLock&)=delete;
+    StockFileLock& operator=(const StockFileLock&)=delete;
+    ~StockFileLock() {
+#ifdef _WIN32
+        if (handle_!=INVALID_HANDLE_VALUE) CloseHandle(handle_);
+#else
+        if (fd_>=0) {flock(fd_,LOCK_UN);close(fd_);}
+#endif
+    }
+};
 
-    for (i = 0; i < totalLineas; i++)
-        free(lineas[i]);
+bool replace_atomic(const std::vector<std::string> &lines) {
+    fs::path staging = ".stock-tx-" + std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count()) + ".tmp";
+    try {
+        {
+            std::ofstream out(staging,std::ios::binary|std::ios::trunc);
+            if (!out) return false;
+            for (const auto &line:lines) out << line << '\n';
+            out.flush();
+            if (!out) throw std::runtime_error("No se pudo escribir staging");
+        }
+#ifdef _WIN32
+        if (!MoveFileExA(staging.string().c_str(), "stock.txt",
+                         MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
+            throw std::runtime_error("No se pudo reemplazar stock.txt");
+#else
+        fs::rename(staging,"stock.txt");
+#endif
+        return true;
+    } catch (...) {
+        std::error_code ignored;
+        fs::remove(staging,ignored);
+        return false;
+    }
+}
 
-    return 1;
+using Update = std::function<bool(const std::vector<std::string>&,
+                                  std::vector<std::string>*)>;
+
+int transaction(const char *name, const Update &transform, BigIntArray *result) {
+    if (!name || !*name) return 0;
+    BigIntArray denominations{};
+    if (!cargar_denominaciones_moneda(name,&denominations)) return 0;
+    const size_t expected=denominations.len;
+    bigint_array_free(&denominations);
+    try {
+        StockFileLock lock;
+        std::ifstream file("stock.txt",std::ios::binary);
+        if (!file) return 0;
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file,line)) {
+            if (!line.empty() && line.back()=='\r') line.pop_back();
+            if (line.size()>4096 || lines.size()>10000) return 0;
+            lines.push_back(line);
+        }
+        if (file.bad()) return 0;
+        auto header=std::find(lines.begin(),lines.end(),std::string(name));
+        if (header==lines.end()) return 0;
+        size_t first=static_cast<size_t>(header-lines.begin())+1;
+        size_t last=first;
+        std::vector<std::string> before;
+        while (last<lines.size() && (lines[last]=="-1" || digits_only(lines[last]))) {
+            before.push_back(lines[last]=="-1" ? "0" : lines[last]);
+            ++last;
+        }
+        if (before.size()!=expected) return 0;
+        std::vector<std::string> after;
+        if (!transform(before,&after) || after.size()!=expected ||
+            !std::all_of(after.begin(),after.end(),digits_only)) return 0;
+        BigIntArray staged{};
+        if (result) {
+            if (!bigint_array_create(&staged,expected)) return 0;
+            for (size_t i=0;i<expected;++i) {
+                BigInt temp{nullptr};
+                bool ok=bigint_init(&temp,after[i].c_str()) &&
+                        bigint_array_set(&staged,i,&temp);
+                bigint_free(&temp);
+                if (!ok) {bigint_array_free(&staged);return 0;}
+            }
+        }
+        for (size_t i=0;i<expected;++i)
+            lines[first+i]=(after[i]=="0" ? "-1" : after[i]);
+        if (!replace_atomic(lines)) {bigint_array_free(&staged);return 0;}
+        if (result) {bigint_array_free(result);*result=staged;}
+        return 1;
+    } catch (...) {return 0;}
+}
+
+bool parse_values(const BigIntArray *items,std::vector<std::string> *out) {
+    if (!items || !items->items) return false;
+    out->clear();
+    for (size_t i=0;i<items->len;++i) {
+        const char *s=items->items[i].digits;
+        if (!s || !digits_only(s)) return false;
+        out->emplace_back(s);
+    }
+    return true;
+}
+
+bool calculate_difference(const std::string &left, const std::string &right,
+                          bool add, std::string *out) {
+    BigInt lhs{nullptr},rhs{nullptr},computed{nullptr};
+    bool ok=bigint_init(&lhs,left.c_str()) && bigint_init(&rhs,right.c_str());
+    if (ok && (add || bigint_compare(&lhs,&rhs)>=0))
+        ok=add ? bigint_add(&lhs,&rhs,&computed)
+               : bigint_subtract(&lhs,&rhs,&computed);
+    else ok=false;
+    if (ok) *out=computed.digits;
+    bigint_free(&lhs);bigint_free(&rhs);bigint_free(&computed);
+    return ok;
+}
+} // namespace
+
+int actualizar_stock_moneda(const char *nombreMoneda, const BigIntArray *stock) {
+    std::vector<std::string> target;
+    if (!parse_values(stock,&target)) return 0;
+    return transaction(nombreMoneda,[&](const std::vector<std::string> &before,
+                                        std::vector<std::string> *after) {
+        if (target.size()!=before.size()) return false;
+        *after=target;
+        return true;
+    },nullptr);
+}
+
+int consumir_stock_moneda_transaccional(const char *nombreMoneda,
+                                       const BigIntArray *consumo,
+                                       BigIntArray *stock_actualizado) {
+    std::vector<std::string> used;
+    if (!stock_actualizado || !parse_values(consumo,&used)) return 0;
+    return transaction(nombreMoneda,[&](const std::vector<std::string> &before,
+                                        std::vector<std::string> *after) {
+        if (before.size()!=used.size()) return false;
+        after->clear();
+        for (size_t i=0;i<before.size();++i) {
+            std::string left;
+            if (!calculate_difference(before[i],used[i],false,&left)) return false;
+            after->push_back(left);
+        }
+        return true;
+    },stock_actualizado);
+}
+
+int ajustar_stock_moneda_transaccional(const char *nombreMoneda, size_t indice,
+                                      const BigInt *delta, int esSuma,
+                                      BigIntArray *stock_actualizado) {
+    if (!delta || !delta->digits || !digits_only(delta->digits) || !stock_actualizado)
+        return 0;
+    return transaction(nombreMoneda,[&](const std::vector<std::string> &before,
+                                        std::vector<std::string> *after) {
+        if (indice>=before.size()) return false;
+        *after=before;
+        return calculate_difference(before[indice],delta->digits,esSuma!=0,
+                                    &(*after)[indice]);
+    },stock_actualizado);
 }
