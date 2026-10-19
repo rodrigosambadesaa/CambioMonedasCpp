@@ -26,3 +26,12 @@ historial exhaustivo y nueva GUI multiplataforma requieren ports adicionales.
 Compilar con \`make release\` y probar con \`make test\`.
 Para evitar falsear equivalencias, el código C original no se ha añadido como
 dependencia de compilación.
+
+## Conversión de divisas determinista
+
+`--convert EUR USD 100` consulta `rates_stub.json` de la versión en C y
+redondea céntimos con `BigInt` en C++20, evitando `double` y desbordamientos.
+Se admite también `--convert USD EUR 109`. Las tasas del stub son ejemplos
+históricos de prueba y **no** cotizaciones actuales. No se ha añadido acceso
+HTTP a un proveedor financiero al port C++; si no existe el par en el stub,
+la aplicación falla explícitamente.

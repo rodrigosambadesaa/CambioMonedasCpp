@@ -9,6 +9,7 @@
 #include <unistd.h>
 #endif
 #include <limits>
+#include <regex>
 
 #include "portable_cli.h"
 #include "bigint.h"
@@ -301,6 +302,65 @@ void export_report(std::ostream &out, const Blocks &denoms, const Blocks &stocks
     }
 }
 
+
+std::string iso_code(const std::string &name) {
+    const std::string key = currency(name);
+    static const std::map<std::string,std::string> codes {
+        {"euro","EUR"},{"dolar","USD"},{"yen","JPY"},
+        {"libra","GBP"},{"franco_suizo","CHF"},{"dolar_canadiense","CAD"},
+        {"dolar_australiano","AUD"},{"yuan_chino","CNY"},{"peso_mexicano","MXN"}
+    };
+    if (auto it=codes.find(key); it!=codes.end()) return it->second;
+    if (key.size()==3 && std::all_of(key.begin(),key.end(),
+         [](unsigned char c){return c >= 'a' && c <= 'z';})) {
+        std::string result=key;
+        std::transform(result.begin(),result.end(),result.begin(),[](unsigned char c){return static_cast<char>(std::toupper(c));});
+        return result;
+    }
+    throw std::invalid_argument("Moneda ISO desconocida: " + name);
+}
+
+struct DecimalRate { std::string numerator, denominator, printable; };
+
+DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
+    if (from==to) return {"1","1","1"};
+    std::ifstream input("rates_stub.json");
+    if (!input) throw std::runtime_error("No existe rates_stub.json");
+    std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (document.size() > 1024 * 1024) throw std::runtime_error("Archivo de tasas demasiado grande");
+    const std::regex pattern("\"" + from + "_" + to + "\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)");
+    std::smatch matches;
+    if (!std::regex_search(document, matches, pattern))
+        throw std::runtime_error("No existe tasa para " + from + "_" + to);
+    std::string digits=matches[1].str();
+    std::string printable=digits;
+    std::size_t dot=digits.find('.');
+    std::size_t scale=(dot==std::string::npos) ? 0 : digits.size()-dot-1;
+    if (scale > 30 || digits.size() > 100) throw std::runtime_error("Tasa demasiado precisa");
+    if (dot!=std::string::npos) digits.erase(dot,1);
+    if (!numeric(digits) || std::all_of(digits.begin(),digits.end(),[](char c){return c=='0';}))
+        throw std::runtime_error("Tasa cero o invalida");
+    return {digits, "1"+std::string(scale,'0'), printable};
+}
+
+std::string convert_cents(const std::string &amount, const DecimalRate &rate) {
+    if (!numeric(amount)) throw std::invalid_argument("Importe invalido");
+    OwnedInt value(amount), numerator(rate.numerator), denominator(rate.denominator);
+    OwnedInt two("2"), one("1"), product("0"), quotient("0"), remainder("0"), doubled("0");
+    if (!bigint_multiply(&value.value,&numerator.value,&product.value) ||
+        !bigint_divmod(&product.value,&denominator.value,&quotient.value,&remainder.value) ||
+        !bigint_multiply(&remainder.value,&two.value,&doubled.value))
+        throw std::runtime_error("Error de aritmetica BigInt");
+    if (bigint_compare(&doubled.value,&denominator.value)>=0) {
+        BigInt rounded{nullptr};
+        if (!bigint_add(&quotient.value,&one.value,&rounded))
+            throw std::runtime_error("Error redondeando BigInt");
+        bigint_free(&quotient.value);
+        quotient.value=rounded;
+    }
+    return quotient.value.digits;
+}
+
 std::optional<std::string> flag_value(const std::vector<std::string> &args, const std::string &flag) {
     auto it = std::find(args.begin(), args.end(), flag);
     if (it == args.end() || ++it == args.end()) return std::nullopt;
@@ -533,11 +593,12 @@ int run_portable_cli(int argc, char **argv) {
             size_t index = static_cast<size_t>(it - args.begin());
             if (index + 3 >= args.size()) throw std::runtime_error("Faltan argumentos --convert");
             std::string from = currency(args[index + 1]), to = currency(args[index + 2]);
-            if (from != to) throw std::runtime_error("Sin proveedor de tasas verificado; conversion cruzada deshabilitada");
-            auto outcome = calculate(args[index + 3], to, has(args, "--convert-stock"),
+            DecimalRate rate=read_stub_rate(iso_code(from),iso_code(to));
+            std::string destination=convert_cents(args[index + 3],rate);
+            auto outcome = calculate(destination, to, has(args, "--convert-stock"),
                                      {}, {}, denoms, stocks);
             if (!outcome) throw std::runtime_error("Cambio exacto no disponible");
-            std::cout << "Origen=" << args[index + 3] << " Destino=" << args[index + 3] << " Tasa=1\n";
+            std::cout << "Origen=" << args[index + 3] << " Destino=" << destination << " Tasa=" << rate.printable << "\n";
             for (size_t i = 0; i < outcome->pieces.size(); ++i)
                 std::cout << denoms.at(to)[i] << ":" << outcome->pieces[i] << '\n';
             return 0;
