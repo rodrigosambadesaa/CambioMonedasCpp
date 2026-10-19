@@ -2,6 +2,12 @@
 #include <string.h>
 #include "bigint.h"
 #include "algoritmo_cambio.h"
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <random>
+#include <string>
+#include <vector>
 
 static int fallos = 0;
 
@@ -106,8 +112,102 @@ static void test_rangos_stock_bigint(void) {
     bigint_free(&big);bigint_array_free(&d2);bigint_array_free(&s2);bigint_array_free(&r2);
 }
 
+
+struct Expected {
+    bool found=false;
+    int covered=-1;
+    int pieces=std::numeric_limits<int>::max();
+};
+
+static Expected brute(int amount, const std::vector<int> &coins,
+                      const std::vector<int> *stock, int min, int max, bool near) {
+    Expected best;
+    std::function<void(std::size_t,int,int)> walk=[&](std::size_t i,int sum,int pieces) {
+        if (sum>amount || pieces>max) return;
+        if (i==coins.size()) {
+            if (pieces<min || (near && sum==0) || (!near && sum!=amount)) return;
+            if (!best.found || sum>best.covered || (sum==best.covered && pieces<best.pieces)) {
+                best={true,sum,pieces};
+            }
+            return;
+        }
+        int limit=(amount-sum)/coins[i];
+        if (stock) limit=std::min(limit,(*stock)[i]);
+        for (int n=0;n<=limit;++n) walk(i+1,sum+n*coins[i],pieces+n);
+    };
+    walk(0,0,0);
+    return best;
+}
+
+static void differential_property_tests(void) {
+    std::mt19937 generator(0xC0FFEE);
+    std::uniform_int_distribution<int> denomination_distribution(1,10);
+    std::uniform_int_distribution<int> stock_distribution(0,3);
+    std::uniform_int_distribution<int> amount_distribution(0,24);
+    std::uniform_int_distribution<int> size_distribution(2,5);
+    for(int iteration=0;iteration<80;++iteration) {
+        const int n=size_distribution(generator);
+        std::vector<int> coins;
+        while (coins.size()<static_cast<std::size_t>(n)) {
+            int v=denomination_distribution(generator);
+            if (std::find(coins.begin(),coins.end(),v)==coins.end()) coins.push_back(v);
+        }
+        std::sort(coins.rbegin(),coins.rend());
+        std::vector<int> stock;
+        for(int i=0;i<n;++i) stock.push_back(stock_distribution(generator));
+        int amount=amount_distribution(generator);
+        std::vector<std::string> dstrings, sstrings;
+        std::vector<const char *> ds,ss;
+        for(int value:coins) dstrings.push_back(std::to_string(value));
+        for(int value:stock) sstrings.push_back(std::to_string(value));
+        for(const auto &v:dstrings) ds.push_back(v.c_str());
+        for(const auto &v:sstrings) ss.push_back(v.c_str());
+        BigInt target{nullptr}; BigIntArray denominations{}, inventory{};
+        check_int(bigint_init(&target,std::to_string(amount).c_str()),"valor property");
+        check_int(crear_arreglo(&denominations,ds.data(),ds.size()),"denom property");
+        check_int(crear_arreglo(&inventory,ss.data(),ss.size()),"stock property");
+        for(bool limited : {false,true}) {
+            const auto *limits=limited ? &stock : nullptr;
+            for(int variation=0;variation<3;++variation) {
+                int min=variation==0 ? 0 : variation==1 ? 2 : 1;
+                int max=variation==0 ? 1000 : variation==1 ? 4 : 6;
+                bool nearest=variation==2;
+                Expected reference=brute(amount,coins,limits,min,max,nearest);
+                BigIntArray answer{};
+                BigInt covered{nullptr};
+                int success=0;
+                if(nearest)
+                    success=limited
+                        ? calcular_cambio_cercano_stock_con_rango(&target,&denominations,&inventory,min,max,&covered,&answer)
+                        : calcular_cambio_cercano_con_rango(&target,&denominations,min,max,&covered,&answer);
+                else
+                    success=limited
+                        ? calcular_cambio_optimo_stock_con_rango(&target,&denominations,&inventory,min,max,&answer)
+                        : calcular_cambio_optimo_con_rango(&target,&denominations,min,max,&answer);
+                check_int(static_cast<bool>(success)==reference.found,"differential existence");
+                if (success && reference.found) {
+                    int actualSum=0,actualPieces=0;
+                    for(std::size_t i=0;i<answer.len;++i) {
+                        int count=std::stoi(answer.items[i].digits);
+                        actualSum+=coins[i]*count;
+                        actualPieces+=count;
+                        if(limited) check_int(count<=stock[i],"differential stock");
+                    }
+                    check_int(actualSum==reference.covered,"differential covered");
+                    check_int(actualPieces==reference.pieces,"differential min pieces");
+                    if(nearest)
+                        check_int(covered.digits && std::to_string(reference.covered)==covered.digits,"differential near");
+                }
+                bigint_array_free(&answer);bigint_free(&covered);
+            }
+        }
+        bigint_array_free(&denominations);bigint_array_free(&inventory);bigint_free(&target);
+    }
+}
+
 int main(void)
 {
+    differential_property_tests();
     test_rangos_stock_bigint();
     test_cambio_no_canonico_ilimitado();
 

@@ -47,3 +47,13 @@ disponibles, rechaza la operación. Las GUI siguen usando el reemplazo de
 inventario absoluto, aunque ahora con escritura protegida, por lo que los
 cambios desde snapshots antiguos todavía pueden ser conflictivos. Las
 instancias en C# y C++ no comparten mecanismo de bloqueo.
+
+
+## Pruebas diferenciales exhaustivas
+
+\`tests/test_bigint_algoritmo.cpp\` contrasta 480 casos
+(80 escenarios pseudoaleatorios deterministas × 2 modos × 3 variantes)
+contra un oráculo de búsqueda exhaustiva independiente.
+Comprueba exactitud del monto, mínimos de piezas, límites de inventario y
+cambio cercano. La búsqueda de cambio cercano descarta importe cubierto
+cero de acuerdo con el contrato del C original.
