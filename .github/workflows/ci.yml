@@ -126,6 +126,8 @@ jobs:
           if (-not (Select-String -Path batch_out.csv -Pattern 'OK total=')) { throw 'batch sin resultados' }
           .\progvoraz.exe --export-stock-json stock_out.json
           .\progvoraz.exe --export-report report_out.txt
+          $conversion = .\progvoraz.exe --convert EUR USD 100 | Out-String
+          if ($conversion -notmatch 'Destino=109') { throw 'FX parity regression' }
 
       - name: HTTP loopback integration (Windows)
         if: runner.os == 'Windows'
