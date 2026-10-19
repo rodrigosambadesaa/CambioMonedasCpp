@@ -14,6 +14,7 @@
 #include "portable_cli.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
+#include "moneda_gestion.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
