@@ -21,7 +21,7 @@ jobs:
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
 
       - name: Build GUI (Linux portable)
         if: runner.os == 'Linux'
@@ -29,7 +29,7 @@ jobs:
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
 
       - name: Swift toolchain info (macOS)
         if: runner.os == 'macOS'
@@ -45,6 +45,10 @@ jobs:
         if: runner.os == 'macOS'
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_portable.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz_gui_portable
 
+      - name: Unit tests (Linux)
+        if: runner.os == 'Linux'
+        run: make test
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -54,6 +58,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           printf "euro\nvolver\nsalir\n" | ./progvoraz_gui
+
+      - name: Unit tests (macOS)
+        if: runner.os == 'macOS'
+        run: make test
 
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
@@ -81,12 +89,23 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe
 
       - name: Build GUI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 gui_window.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz_gui.exe -mwindows
+
+      - name: Unit tests + batch (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          g++ -std=c++20 -Wall -Wextra -Wpedantic -I. tests/test_bigint_algoritmo.cpp algoritmo_cambio.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_tests.exe
+          .\progvoraz_tests.exe
+          .\progvoraz.exe --input tests/sample_batch.csv --output batch_out.csv
+          if (-not (Select-String -Path batch_out.csv -Pattern 'OK total=')) { throw 'batch sin resultados' }
+          .\progvoraz.exe --export-stock-json stock_out.json
+          .\progvoraz.exe --export-report report_out.txt
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'

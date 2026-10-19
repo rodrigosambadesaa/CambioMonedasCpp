@@ -1,0 +1,5 @@
+mode,moneda,monto,range
+a,EUR,6,
+b,EUR,6,
+a,Dolar,12345,1-50
+a,euro,invalido,

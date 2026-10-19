@@ -1,5 +1,5 @@
 APP := progvoraz
-SRC := main.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
+SRC := main.cpp portable_cli.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
 GUI_APP := progvoraz_gui
 GUI_SRC_WIN := gui_window.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp vector_dinamico.cpp
 GUI_SRC_MAC := gui_macos.swift
@@ -18,7 +18,7 @@ UNAME_S := $(shell uname -s 2>/dev/null)
 
 TARGET := $(APP)$(BIN_EXT)
 
-.PHONY: all debug release run gui run-gui clean help
+.PHONY: all debug release run gui run-gui test clean help
 
 all: debug
 
@@ -68,8 +68,18 @@ run-gui: $(GUI_TARGET)
 	./$(GUI_TARGET)
 endif
 
+
+test: $(TARGET)
+	$(CXX) $(CXXFLAGS) -I. tests/test_bigint_algoritmo.cpp algoritmo_cambio.cpp bigint.cpp vector_dinamico.cpp -o progvoraz_tests
+	./progvoraz_tests
+	./$(TARGET) --help
+	./$(TARGET) --input tests/sample_batch.csv --output tests/batch_out.csv
+	grep 'OK total=' tests/batch_out.csv
+	./$(TARGET) --export-stock-json tests/stock_out.json
+	./$(TARGET) --export-report tests/report_out.txt
+
 clean:
-	rm -f progvoraz progvoraz.exe progvoraz_gui progvoraz_gui.exe temporal.exe stock.tmp *.o
+	rm -f progvoraz progvoraz.exe progvoraz_gui progvoraz_gui.exe temporal.exe stock.tmp progvoraz_tests tests/batch_out.csv tests/stock_out.json tests/report_out.txt *.o
 
 help:
 	@echo "Targets disponibles:"
