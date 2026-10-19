@@ -8,6 +8,9 @@ GUI_SRC_PORTABLE := gui_portable.cpp moneda_gestion.cpp bigint.cpp algoritmo_cam
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic
 LDFLAGS ?=
+ifeq ($(OS),Windows_NT)
+LDFLAGS += -lws2_32
+endif
 
 BIN_EXT :=
 ifeq ($(OS),Windows_NT)

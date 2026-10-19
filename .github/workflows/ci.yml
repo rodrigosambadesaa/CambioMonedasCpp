@@ -49,6 +49,17 @@ jobs:
         if: runner.os == 'Linux'
         run: make test
 
+      - name: HTTP loopback integration (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ./progvoraz --server --port 19377 &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null || true' EXIT
+          sleep 2
+          test "$(curl --fail --silent http://127.0.0.1:19377/health)" = "OK"
+          curl --fail --silent http://127.0.0.1:19377/export_stock_json | grep -q '"monedas"'
+          printf 'mode,moneda,monto\na,euro,6\n' | curl --fail --silent --data-binary @- http://127.0.0.1:19377/batch | grep -q 'OK total='
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -62,6 +73,15 @@ jobs:
       - name: Unit tests (macOS)
         if: runner.os == 'macOS'
         run: make test
+
+      - name: HTTP loopback integration (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ./progvoraz --server --port 19377 &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null || true' EXIT
+          sleep 2
+          test "$(curl --fail --silent http://127.0.0.1:19377/health)" = "OK"
 
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
@@ -89,7 +109,7 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
 
       - name: Build GUI (Windows)
         if: runner.os == 'Windows'
@@ -106,6 +126,19 @@ jobs:
           if (-not (Select-String -Path batch_out.csv -Pattern 'OK total=')) { throw 'batch sin resultados' }
           .\progvoraz.exe --export-stock-json stock_out.json
           .\progvoraz.exe --export-report report_out.txt
+
+      - name: HTTP loopback integration (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $server = Start-Process -FilePath .\progvoraz.exe -ArgumentList '--server', '--port', '19377' -PassThru -NoNewWindow
+          try {
+            Start-Sleep -Seconds 2
+            $health = Invoke-WebRequest -Uri 'http://127.0.0.1:19377/health'
+            if ($health.Content -ne 'OK') { throw 'HTTP health failed' }
+          } finally {
+            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
