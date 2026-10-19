@@ -80,6 +80,15 @@ int main() {
         assert(std::string(unchanged.items[0].digits)=="1");
         assert(std::string(unchanged.items[2].digits)=="5");
         bigint_array_free(&unchanged);
+        std::ifstream audit("historial.txt");
+        assert(audit);
+        int lines=0;
+        std::string entry;
+        while(std::getline(audit,entry)) {
+            assert(entry.find("Moneda=euro")!=std::string::npos);
+            ++lines;
+        }
+        assert(lines==4); // consumo, dos ajustes y cambio especifico
         std::cout << "OK: stock atomico, limites de bloque, consumo y administrador\n";
     } catch (...) {
         fs::current_path(original);

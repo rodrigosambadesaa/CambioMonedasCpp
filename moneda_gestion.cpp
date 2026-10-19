@@ -10,6 +10,7 @@
 #include "moneda_gestion.h"
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -255,6 +256,26 @@ int transaction(const char *name, const Update &transform, BigIntArray *result) 
             lines[first+i]=(after[i]=="0" ? "-1" : after[i]);
         if (!replace_atomic(lines)) {bigint_array_free(&staged);return 0;}
         if (result) {bigint_array_free(result);*result=staged;}
+        // Journal best effort AFTER durable stock replacement. Like the C
+        // original, an audit write failure does not roll back the stock.
+        {
+            std::time_t now=std::time(nullptr);
+            std::tm stamp{};
+#ifdef _WIN32
+            if (localtime_s(&stamp,&now)==0)
+#else
+            if (localtime_r(&now,&stamp)!=nullptr)
+#endif
+            {
+                char timestamp[40]={};
+                if (std::strftime(timestamp,sizeof(timestamp),"%Y-%m-%d %H:%M:%S",&stamp)) {
+                    std::ofstream audit("historial.txt",std::ios::app);
+                    if (audit)
+                        audit << '[' << timestamp << "] Stock actualizado | Moneda="
+                              << name << '\n';
+                }
+            }
+        }
         return 1;
     } catch (...) {return 0;}
 }

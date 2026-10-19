@@ -83,6 +83,8 @@ test: $(TARGET)
 	./$(TARGET) --export-stock-json tests/stock_out.json
 	./$(TARGET) --export-report tests/report_out.txt
 	./$(TARGET) --convert EUR USD 100 | grep 'Destino=109'
+	./$(TARGET) --summary euro | grep 'Piezas='
+	./$(TARGET) --history
 
 clean:
 	rm -f progvoraz progvoraz.exe progvoraz_gui progvoraz_gui.exe temporal.exe stock.tmp progvoraz_tests progvoraz_stock_tests tests/batch_out.csv tests/stock_out.json tests/report_out.txt *.o
