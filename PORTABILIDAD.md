@@ -194,3 +194,13 @@ app_console_run() es el equivalente al del C original;
 app_console_imprimir_resultado() mantiene el contrato público del formateador.
 Makefile, VS Code y las matrices de CI (incluyendo sanitizers e interoperabilidad)
 compilan explícitamente el módulo. No se importa el código original C.
+
+## Restricciones y cambio cercano en app_console.cpp
+
+Durante una sesión de cambio, la consola acepta ahora 'limite' (también
+'limit' o 'l') para introducir N, =N o N-M, o 'cercano'/'nearest'
+para solicitar una propuesta de importe cercano. La búsqueda usa el motor
+C++ existente con BigInt; si no hay cambio exacto muestra el importe
+cubierto, solicita confirmación y **solo después** descuenta stock bajo
+la transacción protegida. La negativa no modifica el inventario.
+Actions prueba el cálculo de 6 céntimos con exactamente 3 piezas.
