@@ -8,6 +8,8 @@
 #include <queue>
 #include <tuple>
 #include <numeric>
+#include <map>
+#include <iostream>
 #include <cstdint>
 #include <stdexcept>
 #include <functional>
@@ -233,6 +235,92 @@ int solve_large_two(const BigInt* amount, const BigIntArray* denom,
     return 1;
 }
 
+// Sparse exact bounded BigInt change for <=512 physical coins. Every
+// state carries both sum and piece count (a lower coin bound can require
+// choosing a non-optimal number of pieces for the same amount).
+// 1=valid, 0=provably impossible, -1=inventory too large for this route.
+// Caller may pass 'covered' for closest-change semantics.
+int solve_large_sparse(const BigInt* amount, const BigIntArray* denomination,
+                       const BigIntArray* stock, std::size_t minCoins,
+                       std::size_t maxCoins, BigIntArray* result,
+                       BigInt* covered=nullptr) {
+    if(!amount || !denomination || !denomination->items ||
+       !stock || !stock->items || stock->len!=denomination->len ||
+       !result) return -1;
+    std::vector<std::size_t> amounts;
+    std::size_t sumStock=0;
+    for(std::size_t i=0;i<stock->len;++i) {
+        std::size_t current=0;
+        if(!to_size(&stock->items[i],512,&current)) return -1;
+        if(current>512-sumStock) return -1;
+        amounts.push_back(current);
+        sumStock+=current;
+    }
+    struct Node {
+        std::shared_ptr<const Node> prior;
+        std::size_t index,quantity;
+    };
+    using Plan=std::shared_ptr<const Node>;
+    using Key=std::pair<std::string,std::size_t>;
+    std::map<Key,Plan> states{{Key{"0",0},nullptr}};
+    for(std::size_t i=0;i<denomination->len;++i) {
+        if(bigint_is_zero(&denomination->items[i])) return 0;
+        std::size_t remaining=amounts[i];
+        for(std::size_t bundle=1;remaining;) {
+            const std::size_t take=std::min(bundle,remaining);
+            remaining-=take;
+            ManagedBig units(std::to_string(take)), contribution;
+            if(!bigint_multiply(&units.number,&denomination->items[i],
+                               &contribution.number)) return 0;
+            auto next=states;
+            for(const auto& [key,prior]:states) {
+                if(maxCoins!=std::numeric_limits<std::size_t>::max() &&
+                   key.second+take>maxCoins) continue;
+                ManagedBig previousSum(key.first),candidate;
+                if(!bigint_add(&previousSum.number,&contribution.number,
+                               &candidate.number)) return 0;
+                if(bigint_compare(&candidate.number,amount)>0) continue;
+                next.try_emplace(Key{candidate.number.digits,key.second+take},
+                    std::make_shared<Node>(Node{prior,i,take}));
+            }
+            if(next.size()>250000) {
+                std::cerr<<"Busqueda exacta limitada a 250000 estados de inventario\n";
+                return 0;
+            }
+            states.swap(next);
+            bundle=bundle>remaining/2?remaining:bundle*2;
+        }
+    }
+    bool found=false;
+    Key best{"0",std::numeric_limits<std::size_t>::max()};
+    Plan bestPlan;
+    for(const auto& [key,plan]:states) {
+        if(key.second<minCoins || key.second>maxCoins) continue;
+        if(covered && key.first=="0") continue;
+        ManagedBig candidate(key.first);
+        if(!covered && bigint_compare(&candidate.number,amount)!=0) continue;
+        if(!found) { found=true;best=key;bestPlan=plan;continue; }
+        ManagedBig previousBest(best.first);
+        int comparison=bigint_compare(&candidate.number,&previousBest.number);
+        if(comparison>0 || comparison==0 && key.second<best.second) {
+            best=key;bestPlan=plan;
+        }
+    }
+    if(!found) return 0;
+    std::vector<std::size_t> counts(denomination->len,0);
+    for(auto plan=bestPlan;plan;plan=plan->prior)
+        counts[plan->index]+=plan->quantity;
+    if(!set_result(counts,result)) return 0;
+    if(covered) {
+        ManagedBig value(best.first);
+        if(!bigint_set(covered,&value.number)) {
+            bigint_array_free(result);
+            return 0;
+        }
+    }
+    return 1;
+}
+
 // 1 = mathematically certified optimum, 0 = proven no solution in max range,
 // -1 = unsupported graph (leave legacy large-number branch unchanged).
 // For largest denomination A, every smaller denomination d incurs penalty A-d.
@@ -425,6 +513,10 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
     std::size_t requested = 0;
     if (!amount || !denom || !result) return 0;
     if (!to_size(amount, kMaxAmount, &requested)) {
+        if (stock) {
+            int sparse=solve_large_sparse(amount,denom,stock,min_coins,max_coins,result);
+            if (sparse>=0) return sparse;
+        }
         if (denom->len==2) {
             int exact=solve_large_two(amount,denom,stock,min_coins,max_coins,result);
             if (exact>=0) return exact;
@@ -554,6 +646,11 @@ int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
 int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    std::size_t small=0;
+    if (!to_size(m,kMaxAmount,&small)) {
+        int sparse=solve_large_sparse(m,d,st,lo,hi,s,covered);
+        if (sparse>=0) return sparse;
+    }
     if (lo==0) return solve_near_single_pass(m,d,st,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, st, lo, hi, out); });
 }

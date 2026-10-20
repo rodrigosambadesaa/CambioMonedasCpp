@@ -317,8 +317,51 @@ static void test_more_than_size_t_max_coins(void) {
     bigint_free(&amount);bigint_free(&million);
 }
 
+
+static void test_sparse_large_inventory(void) {
+    const char *d[]={"800000","700000","100000"},
+               *limited[]={"1","2","0"}, *solution[]={"0","2","0"};
+    BigInt amount{nullptr},nearAmount{nullptr},covered{nullptr};
+    BigIntArray denominations{},stock{},result{},nearestStock{};
+    check_int(bigint_init(&amount,"1400000"),"large inventory amount");
+    check_int(crear_arreglo(&denominations,d,3),"large inventory denominations");
+    check_int(crear_arreglo(&stock,limited,3),"large inventory stock");
+    check_int(calcular_cambio_optimo_stock(&amount,&denominations,&stock,&result),
+              "exact sparse stock beats greedy NO");
+    check_arreglo_texto(&result,solution,3,"two 700000-cent coins");
+    bigint_array_free(&result);
+    bigint_array_free(&stock);
+    const char *nearStockText[]={"1","1","0"},*nearExpected[]={"1","1","0"};
+    check_int(crear_arreglo(&nearestStock,nearStockText,3),"near stock");
+    check_int(bigint_init(&nearAmount,"1600000"),"closest requested amount");
+    check_int(calcular_cambio_cercano_stock_con_rango(&nearAmount,&denominations,
+       &nearestStock,0,std::numeric_limits<std::size_t>::max(),&covered,&result),
+       "closest BigInt stock via sparse DP");
+    check_int(covered.digits && std::string(covered.digits)=="1500000",
+       "correct closest large sum");
+    check_arreglo_texto(&result,nearExpected,3,"closest two coins");
+    bigint_array_free(&result);bigint_free(&covered);
+    bigint_array_free(&nearestStock);bigint_array_free(&denominations);
+    bigint_free(&nearAmount);bigint_free(&amount);
+
+    const char *d2[]={"800000","400000","200000"},
+               *s2[]={"1","3","2"};
+    check_int(crear_arreglo(&denominations,d2,3),"ranged sparse denominations");
+    check_int(crear_arreglo(&stock,s2,3),"ranged sparse stock");
+    check_int(bigint_init(&amount,"1200000"),"ranged sparse amount");
+    check_int(calcular_cambio_optimo_stock_con_rango(&amount,&denominations,
+       &stock,3,3,&result),"exact three coin result with sparse DP");
+    std::size_t total=0;
+    for(std::size_t i=0;i<result.len;++i)
+        total+=static_cast<std::size_t>(std::stoull(result.items[i].digits));
+    check_int(total==3,"exact lower coin bound retained");
+    bigint_array_free(&result);bigint_array_free(&stock);
+    bigint_array_free(&denominations);bigint_free(&amount);
+}
+
 int main(void)
 {
+    test_sparse_large_inventory();
     test_more_than_size_t_max_coins();
     test_bigint_two_denominations();
     test_noncanonical_large_residue();
