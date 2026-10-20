@@ -266,8 +266,39 @@ static void test_noncanonical_large_residue(void) {
     bigint_array_free(&values);bigint_array_free(&answer);bigint_free(&amount);
 }
 
+
+static void test_bigint_two_denominations(void) {
+    const char *denoms[]={"7","4"};
+    const char *bounded[]={"71422","100"};
+    const char *insufficient[]={"71421","13"};
+    const char *optimal[]={"71426","6"};
+    const char *optimalStock[]={"71422","13"};
+    BigInt amount{nullptr};
+    BigIntArray values{},stock{},result{},tooLittle{};
+    check_int(bigint_init(&amount,"500006"),"two-denomination amount");
+    check_int(crear_arreglo(&values,denoms,2),"two-denomination data");
+    check_int(crear_arreglo(&stock,bounded,2),"two-denomination stock");
+    check_int(calcular_cambio_optimo(&amount,&values,&result),"Diophantine unbounded");
+    check_arreglo_texto(&result,optimal,2,"maximise higher denomination exactly");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_stock(&amount,&values,&stock,&result),
+        "Diophantine bounded");
+    check_arreglo_texto(&result,optimalStock,2,"optimal under bounded stock");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_stock_con_rango(&amount,&values,&stock,
+        71435,71435,&result),"exact coin count with bounded stock");
+    check_arreglo_texto(&result,optimalStock,2,"exact count solution");
+    bigint_array_free(&result);
+    check_int(crear_arreglo(&tooLittle,insufficient,2),"insufficient stock");
+    check_int(!calcular_cambio_optimo_stock(&amount,&values,&tooLittle,&result),
+        "reject unavailable exact change");
+    bigint_array_free(&result);
+    bigint_array_free(&stock);bigint_array_free(&tooLittle);
+    bigint_array_free(&values);bigint_free(&amount);
+}
 int main(void)
 {
+    test_bigint_two_denominations();
     test_noncanonical_large_residue();
     test_near_high_amount();
     differential_property_tests();

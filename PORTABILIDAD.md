@@ -148,3 +148,7 @@ las pruebas de interoperabilidad, GUI y Windows/macOS del CI habitual.
 ## Soluciones óptimas en importes grandes
 
 Se ha añadido un algoritmo exacto de caminos mínimos por clases residuales para importes BigInt sin stock y denominación máxima de hasta 50.000 céntimos. Minimiza la penalización `máxima_denominación × número_piezas − importe` y completa el resultado con monedas de mayor valor. Solo utiliza esta ruta cuando puede demostrar su optimalidad; añade una regresión para `[4,3,1]`, importe `500006`, en la que el algoritmo voraz no es óptimo.
+
+## Solución diofántica con inventario y dos denominaciones
+
+Los importes BigInt grandes con dos denominaciones (máximas hasta 50.000 céntimos) se resuelven ahora por aritmética diofántica y Euclides extendido, también con stock limitado y restricciones de piezas. No es necesario construir una tabla proporcional al importe; se comprueba la igualdad exacta, los límites y la solución óptima mediante el máximo número factible de piezas de mayor denominación. Las nuevas pruebas abarcan 500.006 céntimos, inventario insuficiente y rangos exactos.
