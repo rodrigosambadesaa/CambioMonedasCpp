@@ -160,3 +160,7 @@ Se ha corregido la interpretación de `SIZE_MAX` en el fallback BigInt: es un ce
 ## Cambio exacto disperso con stock finito
 
 La ruta C++ para importes superiores al límite de DP incorpora estados BigInt dispersos `(importe, piezas)` si el stock suma como máximo 512 piezas. Los paquetes binarios de unidades evitan enumerar cantidades enormes y el estado conserva las soluciones no mínimas necesarias para rangos exactos. También se soporta cambio cercano con stock limitado. Se incluye un límite de 250.000 estados y pruebas con denominaciones de 800.000, 700.000 y 100.000 céntimos, donde la vía voraz no encuentra una solución existente.
+
+### Reintento de sustitución atómica en Windows
+
+Cuando otro proceso mantiene abierto temporalmente `stock.txt` sin `FILE_SHARE_DELETE`, `MoveFileExA` puede devolver `ERROR_SHARING_VIOLATION`/ `ERROR_ACCESS_DENIED`. Ahora se reintenta exclusivamente el reemplazo atómico, sin soltar `stock.txt.lock`, durante un máximo de dos segundos. No se repite ni recalcula el consumo de monedas; si el reemplazo sigue sin ser posible, se conserva el stock original y se informa del fallo.
