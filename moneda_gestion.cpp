@@ -195,9 +195,24 @@ bool replace_atomic(const std::vector<std::string> &lines) {
             if (!out) throw std::runtime_error("No se pudo escribir staging");
         }
 #ifdef _WIN32
-        if (!MoveFileExA(staging.string().c_str(), "stock.txt",
-                         MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
-            throw std::runtime_error("No se pudo reemplazar stock.txt");
+        // A reader outside the writers' lock can momentarily open stock.txt
+        // without FILE_SHARE_DELETE. Keep the global inventory lock held and
+        // retry ONLY the atomic replacement, never the entire transaction.
+        bool replaced=false;
+        for (int attempt=0; attempt<200; ++attempt) {
+            if (MoveFileExA(staging.string().c_str(), "stock.txt",
+                MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) {
+                replaced=true;
+                break;
+            }
+            DWORD error=GetLastError();
+            if (error!=ERROR_SHARING_VIOLATION &&
+                error!=ERROR_ACCESS_DENIED &&
+                error!=ERROR_LOCK_VIOLATION) break;
+            Sleep(10);
+        }
+        if (!replaced)
+            throw std::runtime_error("No se pudo reemplazar stock.txt en Windows");
 #else
         fs::rename(staging,"stock.txt");
 #endif
