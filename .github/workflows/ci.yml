@@ -60,6 +60,39 @@ jobs:
           curl --fail --silent http://127.0.0.1:19377/export_stock_json | grep -q '"monedas"'
           printf 'mode,moneda,monto\na,euro,6\n' | curl --fail --silent --data-binary @- http://127.0.0.1:19377/batch | grep -q 'OK total='
 
+      - name: Interactive global menu (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf 'resumen\neuro\nhistorial\nconvertir\nEUR\nEUR\n127\nsalir\n' | ./progvoraz > interactive.out
+          grep -q 'Moneda=euro' interactive.out
+          grep -q 'Origen=127 Destino=127' interactive.out
+
+      - name: Interactive global menu (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          printf 'resumen\neuro\nhistorial\nconvertir\nEUR\nEUR\n127\nsalir\n' | ./progvoraz > interactive.out
+          grep -q 'Moneda=euro' interactive.out
+          grep -q 'Origen=127 Destino=127' interactive.out
+
+      - name: Interactive global menu (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          resumen
+          euro
+          historial
+          convertir
+          EUR
+          EUR
+          127
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'Moneda=euro' -or
+              $output -notmatch 'Origen=127 Destino=127') {
+              throw 'Interactive global menu smoke failed'
+          }
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |

@@ -1,4 +1,7 @@
 #include "portable_cli.h"
+#include <string>
+#include <vector>
+#include <stdexcept>
 /*
  * main.cpp
  *
@@ -126,6 +129,85 @@ static void normalizar_clave(const char *origen, char *destino, size_t tamDestin
 }
 
 /*
+ * Global non-trivial menu actions invoke the independently reimplemented C++ CLI
+ * in-process. No original C executable or shell commands are used here.
+ */
+static std::string prompt_value(const char *message)
+{
+    char buffer[4096];
+    printf("%s", message);
+    fflush(stdout);
+    if (!leer_linea(buffer, sizeof(buffer)))
+        throw std::runtime_error("Entrada finalizada.");
+    return std::string(buffer);
+}
+
+static int menu_global_command(const char *command)
+{
+    std::vector<std::string> args{"progvoraz"};
+    std::string mode(command);
+    try
+    {
+        if (mode == "historial" || mode == "history")
+            args.push_back("--history");
+        else if (mode == "resumen" || mode == "summary")
+        {
+            args.push_back("--summary");
+            args.push_back(prompt_value("Moneda para el resumen: "));
+        }
+        else if (mode == "snapshot")
+        {
+            args.push_back("--snapshot-stock");
+            args.push_back(prompt_value("Ruta para copiar stock: "));
+        }
+        else if (mode == "restaurar" || mode == "restore")
+        {
+            args.push_back("--restore-stock");
+            args.push_back(prompt_value("Ruta del snapshot: "));
+        }
+        else if (mode == "reporte" || mode == "report")
+        {
+            args.push_back("--export-report");
+            args.push_back(prompt_value("Ruta del reporte: "));
+        }
+        else if (mode == "json")
+        {
+            args.push_back("--export-stock-json");
+            args.push_back(prompt_value("Ruta del archivo JSON: "));
+        }
+        else if (mode == "x" || mode == "convertir" || mode == "convert")
+        {
+            args.push_back("--convert");
+            args.push_back(prompt_value("Moneda de origen: "));
+            args.push_back(prompt_value("Moneda de destino: "));
+            args.push_back(prompt_value("Importe en centimos: "));
+        }
+        else if (mode == "caja" || mode == "specific")
+        {
+            args.push_back("--specific");
+            args.push_back(prompt_value("Moneda de caja: "));
+            args.push_back(prompt_value("Cantidades recibidas, separadas por comas: "));
+            args.push_back(prompt_value("Cantidades entregadas, separadas por comas: "));
+            std::string answer = prompt_value("Actualizar stock (s/n): ");
+            if (answer == "s" || answer == "S" || answer == "si" ||
+                answer == "yes" || answer == "y")
+                args.push_back("--specific-stock");
+        }
+        else return 0;
+        std::vector<char *> argv;
+        for (auto &value : args) argv.push_back(value.data());
+        int status = run_portable_cli(static_cast<int>(argv.size()), argv.data());
+        if (status != 0) printf("Operacion no completada (codigo %d).\n", status);
+        return 1;
+    }
+    catch (const std::exception &error)
+    {
+        printf("Operacion no completada: %s\n", error.what());
+        return 1;
+    }
+}
+
+/*
  * Muestra menu inicial y devuelve opcion normalizada en minuscula.
  * Retorna:
  * - 'a' o 'b' si la entrada es valida
@@ -143,6 +225,9 @@ static int pedir_opcion(void)
     printf("|   a) Monedas infinitas                            |\n");
     printf("|   b) Monedas limitadas (usa stock)                |\n");
     printf("|   c) Administrador de stock                       |\n");
+    printf("|   x) Conversion de divisas                        |\n");
+    printf("|   caja, historial, resumen, snapshot, restaurar   |\n");
+    printf("|   reporte, json (tambien en ingles)              |\n");
     dibujar_linea();
     printf("Opcion (o 'salir'): ");
 
@@ -155,10 +240,14 @@ static int pedir_opcion(void)
     strncpy(comando, buffer, sizeof(comando) - 1);
     comando[sizeof(comando) - 1] = '\0';
     a_minusculas(comando);
-    if (strcmp(comando, "salir") == 0)
+    if (strcmp(comando, "salir") == 0 || strcmp(comando, "exit") == 0 ||
+        strcmp(comando, "quit") == 0)
         return -2;
-
-    return (int)tolower((unsigned char)buffer[0]);
+    if (menu_global_command(comando)) return -9;
+    if (strcmp(comando, "a") == 0 || strcmp(comando, "b") == 0 ||
+        strcmp(comando, "c") == 0)
+        return (int)comando[0];
+    return 0;
 }
 
 /*
@@ -591,6 +680,9 @@ int main(int argc, char **argv)
                 opcion = pedir_opcion();
                 if (opcion == 'a' || opcion == 'b' || opcion == 'c')
                     break;
+
+                if (opcion == -9)
+                    continue;
 
                 if (opcion == -2)
                 {
