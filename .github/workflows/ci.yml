@@ -80,6 +80,13 @@ jobs:
           printf 'a\neuro\nlimite\n=3\n6\nsalir\n' | ./progvoraz > interactive-limit.out
           grep -q 'Cambio aceptado: 6 centimos; piezas=3' interactive-limit.out
 
+      - name: Available currencies discovery (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          printf 'a\nsalir\n' | ./progvoraz > available-currencies.out
+          grep -q 'Divisas disponibles' available-currencies.out
+          grep -q 'euro:' available-currencies.out
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |

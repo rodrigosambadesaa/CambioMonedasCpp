@@ -204,3 +204,7 @@ C++ existente con BigInt; si no hay cambio exacto muestra el importe
 cubierto, solicita confirmación y **solo después** descuenta stock bajo
 la transacción protegida. La negativa no modifica el inventario.
 Actions prueba el cálculo de 6 céntimos con exactamente 3 piezas.
+
+## Lista dinámica de divisas en app_console.cpp
+
+Se ha incorporado el equivalente de `mostrar_monedas_disponibles` del C original. Al entrar en cada modo se exploran las claves presentes en `monedas.txt`, se valida que existan denominaciones y stock congruentes y se muestra el número de denominaciones disponibles. No se presupone una lista fija de divisas. La interfaz y el contenido se prueban por stdin en GitHub Actions.
