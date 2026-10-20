@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <queue>
 #include <tuple>
+#include <numeric>
+#include <cstdint>
 #include <functional>
 
 namespace {
@@ -115,6 +117,119 @@ bool solve_limited(std::size_t amount, const std::vector<std::size_t> &values,
         plan = plan->prev;
     }
     return true;
+}
+
+// Exact two-denomination Diophantine solver using the native arbitrary-size
+// BigInt implementation. All modular-inverse arithmetic uses small (<=50000)
+// coprime coefficients; money, stock, quotient and coin counts stay BigInt.
+struct ManagedBig {
+    BigInt number{nullptr};
+    ManagedBig() = default;
+    explicit ManagedBig(const std::string& digits) {
+        if (!bigint_init(&number,digits.c_str()))
+            throw std::runtime_error("BigInt initialization failed");
+    }
+    ManagedBig(const ManagedBig&)=delete;
+    ManagedBig& operator=(const ManagedBig&)=delete;
+    ~ManagedBig() {bigint_free(&number);}
+};
+
+long long inverse_mod(long long x,long long modulus) {
+    if (modulus==1) return 0;
+    long long oldR=modulus,r=x%modulus,oldT=0,t=1;
+    while(r!=0) {
+        long long quotient=oldR/r;
+        long long nextR=oldR-quotient*r;
+        long long nextT=oldT-quotient*t;
+        oldR=r;r=nextR;oldT=t;t=nextT;
+    }
+    if(oldR!=1) return -1;
+    return ((oldT%modulus)+modulus)%modulus;
+}
+
+// 1=success, 0=provably infeasible, -1=coefficients too large for this route.
+int solve_large_two(const BigInt* amount, const BigIntArray* denom,
+                    const BigIntArray* stock, std::size_t minCoins,
+                    std::size_t maxCoins, BigIntArray* result) {
+    if (!amount || !denom || !denom->items || denom->len!=2 || !result ||
+        stock && (!stock->items || stock->len!=2))
+        return -1;
+    std::size_t d0=0,d1=0;
+    if (!to_size(&denom->items[0],50000,&d0) ||
+        !to_size(&denom->items[1],50000,&d1) ||
+        d0==0 || d1==0 || d0==d1) return -1;
+    const std::size_t high=d0>d1?0:1, low=1-high;
+    std::size_t a=std::max(d0,d1),b=std::min(d0,d1);
+    std::size_t divisor=std::gcd(a,b), A=a/divisor, B=b/divisor;
+    ManagedBig g(std::to_string(divisor)), highCoin(std::to_string(a)),
+               lowCoin(std::to_string(b)), one("1"),
+               period(std::to_string(B));
+    ManagedBig C, remainderG;
+    if(!bigint_divmod(amount,&g.number,&C.number,&remainderG.number)) return -1;
+    if(!bigint_is_zero(&remainderG.number)) return 0;
+    ManagedBig cQuotient,cResidue;
+    if(!bigint_divmod(&C.number,&period.number,&cQuotient.number,&cResidue.number))
+        return -1;
+    std::size_t residue=0;
+    if(!to_size(&cResidue.number,B-1,&residue)) return -1;
+    long long inverse=inverse_mod(static_cast<long long>(A),static_cast<long long>(B));
+    if(inverse<0) return -1;
+    std::size_t x0=static_cast<std::size_t>(
+        (static_cast<std::uint64_t>(residue)*static_cast<std::uint64_t>(inverse))%B);
+    ManagedBig initial(std::to_string(x0)), qMax,remainderA;
+    if(!bigint_divmod(amount,&highCoin.number,&qMax.number,&remainderA.number))
+        return -1;
+    ManagedBig upper;
+    if(stock && bigint_compare(&qMax.number,&stock->items[high])>0) {
+        if(!bigint_set(&upper.number,&stock->items[high])) return -1;
+    } else {
+        if(!bigint_set(&upper.number,&qMax.number)) return -1;
+    }
+    if(bigint_compare(&upper.number,&initial.number)<0) return 0;
+    ManagedBig upperDelta,numberOfSteps,unused,scaled,x;
+    if(!bigint_subtract(&upper.number,&initial.number,&upperDelta.number) ||
+        !bigint_divmod(&upperDelta.number,&period.number,&numberOfSteps.number,&unused.number) ||
+        !bigint_multiply(&numberOfSteps.number,&period.number,&scaled.number) ||
+        !bigint_add(&initial.number,&scaled.number,&x.number)) return -1;
+    ManagedBig paid,remaining,y,unusedY,total;
+    if(!bigint_multiply(&x.number,&highCoin.number,&paid.number) ||
+        !bigint_subtract(amount,&paid.number,&remaining.number) ||
+        !bigint_divmod(&remaining.number,&lowCoin.number,&y.number,&unusedY.number) ||
+        !bigint_is_zero(&unusedY.number) ||
+        !bigint_add(&x.number,&y.number,&total.number)) return -1;
+    if(stock && bigint_compare(&y.number,&stock->items[low])>0) return 0;
+    ManagedBig minimum(std::to_string(minCoins));
+    if(bigint_compare(&total.number,&minimum.number)<0) {
+        // Moving one period B from x to y increases coin count by A-B.
+        ManagedBig deficit,delta(std::to_string(A-B)),adjusted,division,
+                   rest,steps,withdraw,received,xNext,yNext,totalNext;
+        if(!bigint_subtract(&minimum.number,&total.number,&deficit.number) ||
+            !bigint_add(&deficit.number,&delta.number,&adjusted.number) ||
+            !bigint_subtract(&adjusted.number,&one.number,&division.number) ||
+            !bigint_divmod(&division.number,&delta.number,&steps.number,&rest.number) ||
+            !bigint_multiply(&steps.number,&period.number,&withdraw.number))
+            return -1;
+        if(bigint_compare(&x.number,&withdraw.number)<0) return 0;
+        ManagedBig otherPeriod(std::to_string(A));
+        if(!bigint_subtract(&x.number,&withdraw.number,&xNext.number) ||
+            !bigint_multiply(&steps.number,&otherPeriod.number,&received.number) ||
+            !bigint_add(&y.number,&received.number,&yNext.number) ||
+            !bigint_add(&xNext.number,&yNext.number,&totalNext.number)) return -1;
+        if(stock && bigint_compare(&yNext.number,&stock->items[low])>0) return 0;
+        if(!bigint_set(&x.number,&xNext.number) ||
+            !bigint_set(&y.number,&yNext.number) ||
+            !bigint_set(&total.number,&totalNext.number)) return -1;
+    }
+    if(maxCoins!=std::numeric_limits<std::size_t>::max()) {
+        ManagedBig maximum(std::to_string(maxCoins));
+        if(bigint_compare(&total.number,&maximum.number)>0) return 0;
+    }
+    if(!bigint_array_create(result,2)) return -1;
+    if(!bigint_array_set(result,high,&x.number) ||
+       !bigint_array_set(result,low,&y.number)) {
+        bigint_array_free(result);return -1;
+    }
+    return 1;
 }
 
 // 1 = mathematically certified optimum, 0 = proven no solution in max range,
@@ -304,6 +419,10 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
     std::size_t requested = 0;
     if (!amount || !denom || !result) return 0;
     if (!to_size(amount, kMaxAmount, &requested)) {
+        if (denom->len==2) {
+            int exact=solve_large_two(amount,denom,stock,min_coins,max_coins,result);
+            if (exact>=0) return exact;
+        }
         if (!stock) {
             int exact=solve_large_residue(amount,denom,min_coins,max_coins,result);
             if (exact>=0) return exact;
