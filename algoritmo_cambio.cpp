@@ -369,9 +369,14 @@ int solve_large(const BigInt *amount, const BigIntArray *denom, const BigIntArra
     }
     BigInt lower{nullptr}, upper{nullptr};
     std::string lo = std::to_string(min_coins), hi = std::to_string(max_coins);
+    // SIZE_MAX signals NO upper constraint, not an upper limit at 2^64-1.
+    // An arbitrary-precision amount can legitimately require more pieces
+    // than size_t can represent.
     ok = ok && bigint_is_zero(&remaining) && bigint_init(&lower, lo.c_str())
-            && bigint_init(&upper, hi.c_str())
-            && bigint_compare(&count, &lower) >= 0 && bigint_compare(&count, &upper) <= 0;
+            && bigint_compare(&count, &lower) >= 0;
+    if (ok && max_coins != std::numeric_limits<std::size_t>::max())
+        ok = bigint_init(&upper, hi.c_str()) &&
+             bigint_compare(&count, &upper) <= 0;
     bigint_free(&remaining); bigint_free(&count); bigint_free(&lower); bigint_free(&upper);
     if (!ok) bigint_array_free(result);
     return ok ? 1 : 0;
