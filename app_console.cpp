@@ -4,6 +4,9 @@
 #include <vector>
 #include <stdexcept>
 #include <limits>
+#include <fstream>
+#include <set>
+#include <algorithm>
 /*
  * main.cpp
  *
@@ -820,6 +823,35 @@ static int flujo_cambio_avanzado(const char *clave, const BigIntArray *denominac
     return 1;
 }
 
+static void mostrar_monedas_disponibles(void)
+{
+    std::ifstream source("monedas.txt");
+    if (!source)
+    {
+        printf("No se pudo abrir monedas.txt.\n");
+        return;
+    }
+    std::set<std::string> displayed;
+    std::string token;
+    printf("--- Divisas disponibles ---\n");
+    while (source >> token)
+    {
+        const bool numeric = !token.empty() &&
+            std::all_of(token.begin(),token.end(),[](unsigned char c){return std::isdigit(c)!=0;});
+        if (numeric || !displayed.insert(token).second) continue;
+        BigIntArray denominations{};
+        BigIntArray inventory{};
+        const bool valid = cargar_denominaciones_moneda(token.c_str(),&denominations) &&
+                           cargar_stock_moneda(token.c_str(),&inventory) &&
+                           denominations.len == inventory.len && denominations.len>0;
+        if (valid)
+            printf("  %s: %zu denominaciones\n",token.c_str(),denominations.len);
+        bigint_array_free(&denominations);
+        bigint_array_free(&inventory);
+    }
+    printf("---------------------------\n");
+}
+
 int app_console_run(void)
 {
     char moneda[MAX_MONEDA_NOMBRE + 1];
@@ -868,6 +900,7 @@ int app_console_run(void)
             limpiar_arreglo(&stock);
             limpiar_arreglo(&monedas);
 
+            mostrar_monedas_disponibles();
             printf("Nombre de la moneda (ej: euro, dolar, yen), 'modo', 'volver' o 'salir': ");
             if (!leer_linea(moneda, sizeof(moneda)))
             {
