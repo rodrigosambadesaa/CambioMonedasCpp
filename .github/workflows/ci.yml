@@ -80,22 +80,6 @@ jobs:
           printf 'a\neuro\nlimite\n=3\n6\nsalir\n' | ./progvoraz > interactive-limit.out
           grep -q 'Cambio aceptado: 6 centimos; piezas=3' interactive-limit.out
 
-      - name: Interactive coin count limit (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $output = @"
-          a
-          euro
-          limite
-          =3
-          6
-          salir
-          "@ | .\progvoraz.exe | Out-String
-          if ($output -notmatch 'Cambio aceptado: 6 centimos; piezas=3') {
-            throw 'C++ interactive coin count limit failed'
-          }
-
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -178,6 +162,22 @@ jobs:
             if ($health.Content -ne 'OK') { throw 'HTTP health failed' }
           } finally {
             Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
+
+      - name: Interactive coin count limit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          a
+          euro
+          limite
+          =3
+          6
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'Cambio aceptado: 6 centimos; piezas=3') {
+            throw 'C++ interactive coin count limit failed'
           }
 
       - name: Interactive global menu (Windows)
