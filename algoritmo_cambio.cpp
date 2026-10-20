@@ -5,6 +5,9 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <queue>
+#include <tuple>
+#include <functional>
 
 namespace {
 constexpr std::size_t kMaxAmount = 500000;
@@ -114,6 +117,115 @@ bool solve_limited(std::size_t amount, const std::vector<std::size_t> &values,
     return true;
 }
 
+// 1 = mathematically certified optimum, 0 = proven no solution in max range,
+// -1 = unsupported graph (leave legacy large-number branch unchanged).
+// For largest denomination A, every smaller denomination d incurs penalty A-d.
+// Minimize A*coin_count - amount in each remainder class mod A. Fill the
+// remaining sum with A-coins: a shortest path then proves global optimality.
+int solve_large_residue(const BigInt *amount, const BigIntArray *denom,
+                        std::size_t min_coins, std::size_t max_coins,
+                        BigIntArray *result) {
+    if (!amount || !denom || !denom->items || !denom->len || !result ||
+        min_coins != 0) return -1;
+    constexpr std::size_t kResidueLimit = 50000;
+    std::vector<std::size_t> values;
+    std::size_t largest=0, indexLargest=0;
+    for (std::size_t i=0;i<denom->len;++i) {
+        std::size_t v=0;
+        if (!to_size(&denom->items[i],kResidueLimit,&v) || v==0) return -1;
+        values.push_back(v);
+        if (v>largest) { largest=v; indexLargest=i; }
+    }
+    if (largest<2) return -1;
+    BigInt divisor{nullptr}, quotient{nullptr}, remainder{nullptr};
+    if (!bigint_init(&divisor,std::to_string(largest).c_str()) ||
+        !bigint_divmod(amount,&divisor,&quotient,&remainder)) {
+        bigint_free(&divisor);bigint_free(&quotient);bigint_free(&remainder);
+        return -1;
+    }
+    std::size_t target=0;
+    bool ok=to_size(&remainder,largest-1,&target);
+    bigint_free(&quotient);
+    bigint_free(&remainder);
+    if (!ok) {bigint_free(&divisor);return -1;}
+    constexpr std::uint64_t kNoPath=std::numeric_limits<std::uint64_t>::max();
+    std::vector<std::uint64_t> penalty(largest,kNoPath), money(largest,kNoPath);
+    std::vector<std::size_t> predecessor(largest,largest), chosen(largest,values.size());
+    using Cost=std::tuple<std::uint64_t,std::uint64_t,std::size_t>;
+    std::priority_queue<Cost,std::vector<Cost>,std::greater<Cost>> work;
+    penalty[0]=money[0]=0;
+    work.emplace(0,0,0);
+    while (!work.empty()) {
+        auto [cost,base,r]=work.top(); work.pop();
+        if (penalty[r]!=cost || money[r]!=base) continue;
+        for (std::size_t i=0;i<values.size();++i) {
+            std::size_t d=values[i];
+            if (d==largest) continue;
+            std::size_t next=(r+d)%largest;
+            auto newCost=cost+(largest-d), newBase=base+d;
+            if (newCost>penalty[next] ||
+                (newCost==penalty[next] && newBase>=money[next])) continue;
+            penalty[next]=newCost;
+            money[next]=newBase;
+            predecessor[next]=r;
+            chosen[next]=i;
+            work.emplace(newCost,newBase,next);
+        }
+    }
+    if (penalty[target]==kNoPath) {bigint_free(&divisor);return -1;}
+    BigInt baseAmount{nullptr},extra{nullptr},largePieces{nullptr},unused{nullptr};
+    bool ready=bigint_init(&baseAmount,std::to_string(money[target]).c_str()) &&
+               bigint_compare(amount,&baseAmount)>=0 &&
+               bigint_subtract(amount,&baseAmount,&extra) &&
+               bigint_divmod(&extra,&divisor,&largePieces,&unused) &&
+               bigint_is_zero(&unused);
+    bigint_free(&divisor);
+    bigint_free(&baseAmount);
+    bigint_free(&extra);
+    bigint_free(&unused);
+    if (!ready) {bigint_free(&largePieces);return -1;}
+    std::vector<std::size_t> counts(values.size(),0);
+    std::size_t r=target;
+    for (std::size_t steps=0;r!=0 && steps<largest;++steps) {
+        if (chosen[r]>=values.size() || predecessor[r]>=largest) {
+            bigint_free(&largePieces);return -1;
+        }
+        ++counts[chosen[r]];
+        r=predecessor[r];
+    }
+    if (r!=0) {bigint_free(&largePieces);return -1;}
+    std::size_t smallPieces=0;
+    for (auto count:counts) smallPieces+=count;
+    BigInt small{nullptr},total{nullptr},bound{nullptr};
+    ready=bigint_init(&small,std::to_string(smallPieces).c_str()) &&
+          bigint_add(&largePieces,&small,&total);
+    if (ready && max_coins!=std::numeric_limits<std::size_t>::max()) {
+        ready=bigint_init(&bound,std::to_string(max_coins).c_str());
+        if (ready && bigint_compare(&total,&bound)>0) {
+            bigint_free(&small);bigint_free(&total);bigint_free(&bound);
+            bigint_free(&largePieces);
+            return 0; // The minimal possible number of coins exceeds max.
+        }
+    }
+    bigint_free(&small);bigint_free(&total);bigint_free(&bound);
+    if (!ready) {bigint_free(&largePieces);return -1;}
+    counts[indexLargest]=0; // Include largest as BigInt without truncation.
+    if (!bigint_array_create(result,values.size())) {
+        bigint_free(&largePieces);return -1;
+    }
+    for (std::size_t i=0;i<values.size();++i) {
+        BigInt value{nullptr};
+        bool assigned=(i==indexLargest)
+            ? bigint_array_set(result,i,&largePieces)
+            : bigint_init(&value,std::to_string(counts[i]).c_str()) &&
+              bigint_array_set(result,i,&value);
+        bigint_free(&value);
+        if (!assigned) {bigint_array_free(result);bigint_free(&largePieces);return -1;}
+    }
+    bigint_free(&largePieces);
+    return 1;
+}
+
 int solve_large(const BigInt *amount, const BigIntArray *denom, const BigIntArray *stock,
                 std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
     if (!amount || !denom || !denom->items || !result || (stock && stock->len != denom->len)) return 0;
@@ -191,8 +303,13 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
           std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
     std::size_t requested = 0;
     if (!amount || !denom || !result) return 0;
-    if (!to_size(amount, kMaxAmount, &requested))
+    if (!to_size(amount, kMaxAmount, &requested)) {
+        if (!stock) {
+            int exact=solve_large_residue(amount,denom,min_coins,max_coins,result);
+            if (exact>=0) return exact;
+        }
         return solve_large(amount, denom, stock, min_coins, max_coins, result);
+    }
     std::vector<std::size_t> values;
     if (!read_values(denom, requested, &values)) return 0;
     std::vector<std::size_t> counts;

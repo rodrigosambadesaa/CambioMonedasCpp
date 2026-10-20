@@ -231,8 +231,44 @@ static void test_near_high_amount(void) {
     bigint_free(&covered);bigint_free(&requested);
 }
 
+
+static void test_noncanonical_large_residue(void) {
+    const char *denominations[]={"4","3","1"};
+    BigIntArray values{},answer{};
+    BigInt amount{nullptr};
+    check_int(crear_arreglo(&values,denominations,3),"noncanonical denoms");
+    check_int(bigint_init(&amount,"500006"),"large noncanonical amount");
+    check_int(calcular_cambio_optimo(&amount,&values,&answer),
+              "large exact noncanonical Dijkstra result");
+    const char *expected[]={"125000","2","0"};
+    check_arreglo_texto(&answer,expected,3,"Dijkstra beats greedy by one piece");
+    bigint_array_free(&answer);
+    check_int(!calcular_cambio_optimo_con_limite(&amount,&values,125001,&answer),
+              "proven minimum exceeds maximum piece constraint");
+    bigint_array_free(&answer);
+    bigint_free(&amount);
+    check_int(bigint_init(&amount,"1000000000000000000000000000000000000000006"),
+              "astronomical noncanonical amount");
+    check_int(calcular_cambio_optimo(&amount,&values,&answer),
+              "astronomical optimal solution");
+    BigInt total{nullptr};
+    check_int(bigint_init(&total,"0"),"astronomical sum");
+    for (std::size_t i=0;i<answer.len;++i) {
+        BigInt product{nullptr},sum{nullptr};
+        check_int(bigint_multiply(&values.items[i],&answer.items[i],&product),
+                  "astronomical product");
+        check_int(bigint_add(&total,&product,&sum),"astronomical aggregate");
+        bigint_free(&total);total=sum;
+        bigint_free(&product);
+    }
+    check_int(bigint_compare(&total,&amount)==0,"astronomical sum exact");
+    bigint_free(&total);
+    bigint_array_free(&values);bigint_array_free(&answer);bigint_free(&amount);
+}
+
 int main(void)
 {
+    test_noncanonical_large_residue();
     test_near_high_amount();
     differential_property_tests();
     test_rangos_stock_bigint();

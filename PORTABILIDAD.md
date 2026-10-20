@@ -144,3 +144,7 @@ UndefinedBehaviorSanitizer. Comprueba el motor BigInt, el solver,
 inventario, procesamiento CSV, JSON interactivo y rutas de error.
 Se activa en \`push\`, pull requests y de forma manual. No sustituye
 las pruebas de interoperabilidad, GUI y Windows/macOS del CI habitual.
+
+## Soluciones óptimas en importes grandes
+
+Se ha añadido un algoritmo exacto de caminos mínimos por clases residuales para importes BigInt sin stock y denominación máxima de hasta 50.000 céntimos. Minimiza la penalización `máxima_denominación × número_piezas − importe` y completa el resultado con monedas de mayor valor. Solo utiliza esta ruta cuando puede demostrar su optimalidad; añade una regresión para `[4,3,1]`, importe `500006`, en la que el algoritmo voraz no es óptimo.
