@@ -71,24 +71,6 @@ jobs:
             ./progvoraz > selected-specific-invalid.log
           grep -q 'Cambio especifico rechazado' selected-specific-invalid.log
 
-      - name: Currency specific exchange sub-menu (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $output = @"
-          a
-          euro
-          especifico
-          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-          resumen
-          salir
-          "@ | .\progvoraz.exe | Out-String
-          if ($output -notmatch 'OK moneda=euro total_centimos=50000' -or
-              $output -notmatch 'Moneda=euro') {
-              throw 'Specific selected currency sub-menu failed'
-          }
-
       - name: Interactive global menu (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -233,6 +215,24 @@ jobs:
           if ($output -notmatch 'Moneda=euro' -or
               $output -notmatch 'Origen=127 Destino=127') {
               throw 'Interactive global menu smoke failed'
+          }
+
+      - name: Currency specific exchange sub-menu (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          a
+          euro
+          especifico
+          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+          resumen
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'OK moneda=euro total_centimos=50000' -or
+              $output -notmatch 'Moneda=euro') {
+              throw 'Specific selected currency sub-menu failed'
           }
 
       - name: Native GUI launch from CLI (Windows)
