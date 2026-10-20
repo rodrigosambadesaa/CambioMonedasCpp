@@ -176,3 +176,21 @@ Las cargas de inventario de la CLI C++ reintentan la apertura del archivo durant
 ## Test de interoperabilidad C++/C# en tres sistemas operativos
 
 `.github/workflows/cross-language-stock.yml` compila la rama C++ en revisión y descarga una revisión **fijada por SHA** del repositorio C#. Un test Python ejecuta los dos programas como procesos independientes contra un directorio temporal compartido, prueba el bloqueo de `stock.txt.lock`, completa 34 intercambios de caja en paralelo, comprueba el saldo final y rechaza cambios inválidos. Se ejecuta automáticamente en Linux, macOS y Windows; ninguno de los programas usa código del otro durante su ejecución normal.
+
+## Paridad arquitectónica del módulo app_console
+
+El C original distribuye la aplicación interactiva en app_console.c y el
+procesado de argumentos en main.c. El port C++ sigue ahora el mismo contrato:
+
+- main.cpp: punto de entrada, despacho CLI y lanzamiento del flujo interactivo
+- app_console.h / app_console.cpp: lectura y normalización de entradas,
+  selección de divisa, cálculo, impresión de resultados JSON/texto,
+  administrador de inventario y comandos interactivos
+- portable_cli.cpp: modos no interactivos, servidor, exportaciones y opciones
+
+La implementación completa de la antigua consola de main.cpp se trasladó
+sin eliminar sus comprobaciones de stock ni su interfaz interactiva.
+app_console_run() es el equivalente al del C original;
+app_console_imprimir_resultado() mantiene el contrato público del formateador.
+Makefile, VS Code y las matrices de CI (incluyendo sanitizers e interoperabilidad)
+compilan explícitamente el módulo. No se importa el código original C.

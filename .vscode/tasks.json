@@ -12,11 +12,15 @@
                 "-Wpedantic",
                 "-O2",
                 "main.cpp",
+                "app_console.cpp",
+                "portable_cli.cpp",
+                "algoritmo_cambio.cpp",
                 "moneda_gestion.cpp",
                 "bigint.cpp",
                 "vector_dinamico.cpp",
                 "-o",
-                "progvoraz.exe"
+                "progvoraz.exe",
+                "-lws2_32"
             ],
             "group": {
                 "kind": "build",
@@ -37,6 +41,9 @@
                 "-Wpedantic",
                 "-O2",
                 "main.cpp",
+                "app_console.cpp",
+                "portable_cli.cpp",
+                "algoritmo_cambio.cpp",
                 "moneda_gestion.cpp",
                 "bigint.cpp",
                 "vector_dinamico.cpp",

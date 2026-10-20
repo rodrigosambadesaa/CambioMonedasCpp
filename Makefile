@@ -1,5 +1,5 @@
 APP := progvoraz
-SRC := main.cpp portable_cli.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
+SRC := main.cpp app_console.cpp portable_cli.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
 GUI_APP := progvoraz_gui
 GUI_SRC_WIN := gui_window.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp vector_dinamico.cpp
 GUI_SRC_MAC := gui_macos.swift
