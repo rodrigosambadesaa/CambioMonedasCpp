@@ -74,25 +74,6 @@ jobs:
           grep -q 'Moneda=euro' interactive.out
           grep -q 'Origen=127 Destino=127' interactive.out
 
-      - name: Interactive global menu (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $output = @"
-          resumen
-          euro
-          historial
-          convertir
-          EUR
-          EUR
-          127
-          salir
-          "@ | .\progvoraz.exe | Out-String
-          if ($output -notmatch 'Moneda=euro' -or
-              $output -notmatch 'Origen=127 Destino=127') {
-              throw 'Interactive global menu smoke failed'
-          }
-
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -175,6 +156,25 @@ jobs:
             if ($health.Content -ne 'OK') { throw 'HTTP health failed' }
           } finally {
             Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
+
+      - name: Interactive global menu (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          resumen
+          euro
+          historial
+          convertir
+          EUR
+          EUR
+          127
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'Moneda=euro' -or
+              $output -notmatch 'Origen=127 Destino=127') {
+              throw 'Interactive global menu smoke failed'
           }
 
       - name: Smoke test (Windows)
