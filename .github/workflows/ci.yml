@@ -177,6 +177,17 @@ jobs:
               throw 'Interactive global menu smoke failed'
           }
 
+      - name: Native GUI launch from CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = .\progvoraz.exe --gui | Out-String
+          if ($LASTEXITCODE -ne 0 -or $output -notmatch 'Interfaz GUI iniciada') {
+            throw 'C++ native GUI launch failed'
+          }
+          Get-Process progvoraz_gui -ErrorAction SilentlyContinue |
+            Stop-Process -ErrorAction SilentlyContinue
+
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
