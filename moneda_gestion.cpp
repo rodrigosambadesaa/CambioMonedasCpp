@@ -245,6 +245,11 @@ int transaction(const char *name, const Update &transform, BigIntArray *result) 
             lines.push_back(line);
         }
         if (file.bad()) return 0;
+        // The stream must be CLOSED before MoveFileExA replaces stock.txt.
+        // An outstanding CRT read handle can lack FILE_SHARE_DELETE and
+        // thereby block even this process's own replacement on Windows.
+        // The separate stock.txt.lock remains held throughout the transaction.
+        file.close();
         auto header=std::find(lines.begin(),lines.end(),std::string(name));
         if (header==lines.end()) return 0;
         size_t first=static_cast<size_t>(header-lines.begin())+1;

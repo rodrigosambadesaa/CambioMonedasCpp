@@ -164,3 +164,7 @@ La ruta C++ para importes superiores al límite de DP incorpora estados BigInt d
 ### Reintento de sustitución atómica en Windows
 
 Cuando otro proceso mantiene abierto temporalmente `stock.txt` sin `FILE_SHARE_DELETE`, `MoveFileExA` puede devolver `ERROR_SHARING_VIOLATION`/ `ERROR_ACCESS_DENIED`. Ahora se reintenta exclusivamente el reemplazo atómico, sin soltar `stock.txt.lock`, durante un máximo de dos segundos. No se repite ni recalcula el consumo de monedas; si el reemplazo sigue sin ser posible, se conserva el stock original y se informa del fallo.
+
+### Cierre de lectores antes de sustituir el inventario (Windows)
+
+La transacción C++ cierra ahora explícitamente el `std::ifstream` usado para leer el inventario antes de ejecutar `MoveFileExA`. Dejar abierto ese lector durante la sustitución podía impedirla por permisos `FILE_SHARE_DELETE`, incluso dentro del mismo proceso. El bloqueo separado `stock.txt.lock` permanece adquirido, por lo que cerrar el flujo de lectura no permite otra escritura concurrente cooperante.
