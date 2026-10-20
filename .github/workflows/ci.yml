@@ -21,7 +21,7 @@ jobs:
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
 
       - name: Build GUI (Linux portable)
         if: runner.os == 'Linux'
@@ -29,7 +29,7 @@ jobs:
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz
 
       - name: Swift toolchain info (macOS)
         if: runner.os == 'macOS'
@@ -123,7 +123,7 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+        run: g++ -std=c++20 -Wall -Wextra -Wpedantic -O2 main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
 
       - name: Build GUI (Windows)
         if: runner.os == 'Windows'

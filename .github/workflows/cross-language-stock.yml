@@ -35,7 +35,7 @@ jobs:
       - name: Build local native C++ on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
       - name: Build pinned C# .NET console
         run: dotnet build .ci/csharp/ProgVorazCs.Console/ProgVorazCs.Console.csproj --configuration Release
       - name: Verify 34 independent cross-language stock operations on Unix
