@@ -9,6 +9,7 @@
 #include <tuple>
 #include <numeric>
 #include <cstdint>
+#include <stdexcept>
 #include <functional>
 
 namespace {
