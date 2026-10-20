@@ -188,6 +188,36 @@ jobs:
           Get-Process progvoraz_gui -ErrorAction SilentlyContinue |
             Stop-Process -ErrorAction SilentlyContinue
 
+      - name: Interactive JSON results (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf 'a\neuro\n127\nsalir\n' | ./progvoraz --json > json-result.log
+          grep -q '"resultado":' json-result.log
+          grep -q '"denominacion":' json-result.log
+          grep -q '"cantidad":' json-result.log
+
+      - name: Interactive JSON results (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          printf 'a\neuro\n127\nsalir\n' | ./progvoraz --json > json-result.log
+          grep -q '"resultado":' json-result.log
+
+      - name: Interactive JSON results (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          a
+          euro
+          127
+          salir
+          "@ | .\progvoraz.exe --json | Out-String
+          if ($output -notmatch '"resultado":' -or
+              $output -notmatch '"denominacion":' -or
+              $output -notmatch '"cantidad":') {
+              throw 'Interactive JSON schema failed'
+          }
+
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
