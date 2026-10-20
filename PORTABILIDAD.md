@@ -134,3 +134,13 @@ como cadenas de precisión arbitraria desde BigInt, sin redondeos.
 La variable \`PROGVORAZ_JSON=1\` activa el mismo formato.
 Se mantiene la interfaz de texto alrededor de los resultados para
 preservar la experiencia del programa original.
+
+
+## Sanitizers de memoria y comportamiento indefinido
+
+\`.github/workflows/native-sanitizers.yml\` recompila de manera independiente
+la consola y las dos suites de pruebas bajo AddressSanitizer y
+UndefinedBehaviorSanitizer. Comprueba el motor BigInt, el solver,
+inventario, procesamiento CSV, JSON interactivo y rutas de error.
+Se activa en \`push\`, pull requests y de forma manual. No sustituye
+las pruebas de interoperabilidad, GUI y Windows/macOS del CI habitual.

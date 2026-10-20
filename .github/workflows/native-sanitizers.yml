@@ -1,0 +1,69 @@
+name: C++ native sanitizers
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compile CLI with ASan + UBSan
+        run: |
+          g++ -std=c++20 -g -O1 -Wall -Wextra -Wpedantic \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -fno-omit-frame-pointer \
+            main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp \
+            vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz_sanitized
+
+      - name: Compile both independent test executables
+        run: |
+          g++ -std=c++20 -g -O1 -Wall -Wextra -Wpedantic -I. \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -fno-omit-frame-pointer \
+            tests/test_bigint_algoritmo.cpp algoritmo_cambio.cpp bigint.cpp \
+            vector_dinamico.cpp -o test_algoritmo_sanitized
+          g++ -std=c++20 -g -O1 -Wall -Wextra -Wpedantic -I. \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -fno-omit-frame-pointer \
+            tests/test_stock_tx.cpp moneda_gestion.cpp bigint.cpp \
+            vector_dinamico.cpp -o test_stock_sanitized
+
+      - name: Run algorithm and stock regression suites under sanitizers
+        run: |
+          ./test_algoritmo_sanitized
+          ./test_stock_sanitized
+
+      - name: Run sanitized CLI parsing and batch
+        run: |
+          ./progvoraz_sanitized --help >/dev/null
+          ./progvoraz_sanitized --input tests/sample_batch.csv --output /tmp/progvoraz-sanitized.csv
+          grep -q 'OK total=' /tmp/progvoraz-sanitized.csv
+          printf 'mode,moneda,monto,range\na,EUR,127,\nb,EUR,127,\na,unknown,10,\n' |
+            ./progvoraz_sanitized --stream >/tmp/progvoraz-sanitized-stream.csv
+          grep -q 'ERROR' /tmp/progvoraz-sanitized-stream.csv
+          printf 'a\neuro\n127\nsalir\n' |
+            ./progvoraz_sanitized --json >/tmp/progvoraz-sanitized-interactive.log
+          grep -q '"resultado":' /tmp/progvoraz-sanitized-interactive.log
+
+      - name: Exercise expected failure paths
+        run: |
+          if ./progvoraz_sanitized --convert EUR INVALID 100; then
+            echo "Unexpected success for unknown currency" >&2
+            exit 1
+          fi
+          if ./progvoraz_sanitized --specific euro 1,2 1,2; then
+            echo "Unexpected success for invalid denominations" >&2
+            exit 1
+          fi
