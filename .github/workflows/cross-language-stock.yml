@@ -1,0 +1,47 @@
+name: C++ / C# shared inventory interoperability
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-stock-cross-language:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout C++ source under test
+        uses: actions/checkout@v5
+      - name: Checkout pinned independent C# version
+        uses: actions/checkout@v5
+        with:
+          repository: rodrigosambadesaa/CambioMonedasCSharp
+          ref: d5b6ea1bce5b5c4a9684948fcc056a8abc1254ca
+          path: .ci/csharp
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build local native C++ on Linux/macOS
+        if: runner.os != 'Windows'
+        run: make release
+      - name: Build local native C++ on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+      - name: Build pinned C# .NET console
+        run: dotnet build .ci/csharp/ProgVorazCs.Console/ProgVorazCs.Console.csproj --configuration Release
+      - name: Verify 34 independent cross-language stock operations on Unix
+        if: runner.os != 'Windows'
+        run: python3 tests/test_shared_stock_interop.py progvoraz .ci/csharp/ProgVorazCs.Console/bin/Release/net10.0/ProgVorazCs.Console.dll
+      - name: Verify 34 independent cross-language stock operations on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python tests/test_shared_stock_interop.py progvoraz.exe .ci/csharp/ProgVorazCs.Console/bin/Release/net10.0/ProgVorazCs.Console.dll

@@ -172,3 +172,7 @@ La transacción C++ cierra ahora explícitamente el `std::ifstream` usado para l
 ### Lecturas de stock durante reemplazos concurrentes
 
 Las cargas de inventario de la CLI C++ reintentan la apertura del archivo durante un máximo de dos segundos si Windows impide transitoriamente el acceso mientras otro proceso está terminando una sustitución atómica. Se vuelve a abrir y leer el archivo completo y **no** se repite una operación económica ya completada. Las escrituras siguen exigiendo el bloqueo `stock.txt.lock`.
+
+## Test de interoperabilidad C++/C# en tres sistemas operativos
+
+`.github/workflows/cross-language-stock.yml` compila la rama C++ en revisión y descarga una revisión **fijada por SHA** del repositorio C#. Un test Python ejecuta los dos programas como procesos independientes contra un directorio temporal compartido, prueba el bloqueo de `stock.txt.lock`, completa 34 intercambios de caja en paralelo, comprueba el saldo final y rechaza cambios inválidos. Se ejecuta automáticamente en Linux, macOS y Windows; ninguno de los programas usa código del otro durante su ejecución normal.
