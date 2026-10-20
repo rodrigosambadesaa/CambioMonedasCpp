@@ -74,6 +74,28 @@ jobs:
           grep -q 'Moneda=euro' interactive.out
           grep -q 'Origen=127 Destino=127' interactive.out
 
+      - name: Interactive coin count limit (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          printf 'a\neuro\nlimite\n=3\n6\nsalir\n' | ./progvoraz > interactive-limit.out
+          grep -q 'Cambio aceptado: 6 centimos; piezas=3' interactive-limit.out
+
+      - name: Interactive coin count limit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          a
+          euro
+          limite
+          =3
+          6
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'Cambio aceptado: 6 centimos; piezas=3') {
+            throw 'C++ interactive coin count limit failed'
+          }
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: |

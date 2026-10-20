@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <limits>
 /*
  * main.cpp
  *
@@ -266,7 +267,7 @@ static int pedir_cantidad(BigInt *cantidad)
     char comando[2048];
     BigInt tmp = {0};
 
-    printf("Cantidad en centimos (0, volver o salir): ");
+    printf("Cantidad en centimos (0, volver, limite, cercano o salir): ");
     if (!leer_linea(buffer, sizeof(buffer)))
         return -1;
 
@@ -279,6 +280,12 @@ static int pedir_cantidad(BigInt *cantidad)
 
     if (strcmp(comando, "salir") == 0)
         return 3;
+
+    if (strcmp(comando, "limite") == 0 || strcmp(comando, "limit") == 0 ||
+        strcmp(comando, "l") == 0)
+        return 5;
+    if (strcmp(comando, "cercano") == 0 || strcmp(comando, "nearest") == 0)
+        return 6;
 
     if (strcmp(comando, "volver") == 0 || strcmp(comando, "0") == 0)
         return 2;
@@ -682,6 +689,137 @@ static void imprimir_stock_administrador(const BigIntArray *monedas, const BigIn
     return 1;
 }
 
+// The C reference accepts an upper bound (N), exact count (=N),
+// or an inclusive range (N-M) in the traditional coin-change submenu.
+static bool parse_restriccion(const std::string &raw, size_t *minimum, size_t *maximum)
+{
+    if (!minimum || !maximum) return false;
+    std::string text;
+    for (unsigned char c : raw) if (!isspace(c)) text.push_back(static_cast<char>(c));
+    if (text.empty()) return false;
+    auto parse = [](const std::string &value, size_t *target) {
+        if (value.empty()) return false;
+        for (unsigned char c : value) if (!isdigit(c)) return false;
+        try {
+            size_t used=0;
+            unsigned long long n=std::stoull(value,&used);
+            if (used!=value.size() || n>std::numeric_limits<size_t>::max()) return false;
+            *target=static_cast<size_t>(n);
+            return true;
+        } catch (...) { return false; }
+    };
+    if (text[0]=='=') {
+        if (!parse(text.substr(1),minimum)) return false;
+        *maximum=*minimum;
+        return true;
+    }
+    size_t separator=text.find('-');
+    if (separator!=std::string::npos) {
+        if (!parse(text.substr(0,separator),minimum) ||
+            !parse(text.substr(separator+1),maximum)) return false;
+        return *minimum<=*maximum;
+    }
+    *minimum=0;
+    return parse(text,maximum);
+}
+
+static bool aceptar_sugerencia(void)
+{
+    char reply[32];
+    printf("Aceptar sugerencia? (si/no): ");
+    if (!leer_linea(reply,sizeof(reply))) return false;
+    a_minusculas(reply);
+    return strcmp(reply,"si")==0 || strcmp(reply,"s")==0 ||
+           strcmp(reply,"yes")==0 || strcmp(reply,"y")==0;
+}
+
+static int flujo_cambio_avanzado(const char *clave, const BigIntArray *denominaciones,
+                                BigIntArray *stock, int usar_stock, bool con_limite)
+{
+    size_t minimum=0,maximum=std::numeric_limits<size_t>::max();
+    if (con_limite) {
+        char range[128];
+        printf("Restriccion de monedas (N, =N, N-M): ");
+        if (!leer_linea(range,sizeof(range))) return 0;
+        if (!parse_restriccion(range,&minimum,&maximum)) {
+            printf("Restriccion invalida.\n");
+            return 1;
+        }
+    }
+    BigInt amount{nullptr},covered{nullptr};
+    BigIntArray solution{};
+    int state=pedir_cantidad(&amount);
+    if (state==-1 || state==3) {bigint_free(&amount);return 0;}
+    if (state!=1 || bigint_is_zero(&amount)) {
+        printf("Importe invalido o cancelado.\n");
+        bigint_free(&amount);
+        return 1;
+    }
+    int ok=usar_stock
+        ? calcular_cambio_optimo_stock_con_rango(&amount,denominaciones,stock,
+                                                 minimum,maximum,&solution)
+        : calcular_cambio_optimo_con_rango(&amount,denominaciones,
+                                           minimum,maximum,&solution);
+    bool partial=false;
+    if (!ok) {
+        ok=usar_stock
+            ? calcular_cambio_cercano_stock_con_rango(&amount,denominaciones,stock,
+                        minimum,maximum,&covered,&solution)
+            : calcular_cambio_cercano_con_rango(&amount,denominaciones,
+                        minimum,maximum,&covered,&solution);
+        partial=ok && bigint_compare(&covered,&amount)<0;
+    }
+    if (!ok) {
+        printf("No existe cambio exacto ni sugerencia cercana positiva.\n");
+        bigint_free(&amount);bigint_free(&covered);
+        bigint_array_free(&solution);
+        return 1;
+    }
+    if (partial) {
+        BigInt missing{nullptr};
+        if (bigint_subtract(&amount,&covered,&missing))
+            printf("Sugerencia cercana: cubrir %s c (faltan %s c).\n",
+                   covered.digits,missing.digits);
+        bigint_free(&missing);
+        if (!aceptar_sugerencia()) {
+            printf("Sugerencia rechazada; el stock no se modifica.\n");
+            bigint_free(&amount);bigint_free(&covered);
+            bigint_array_free(&solution);
+            return 1;
+        }
+    }
+    if (usar_stock) {
+        BigIntArray updated{};
+        if (!consumir_stock_moneda_transaccional(clave,&solution,&updated)) {
+            printf("El inventario ha cambiado o no se pudo guardar.\n");
+            bigint_array_free(stock);
+            cargar_stock_moneda(clave,stock);
+            bigint_free(&amount);bigint_free(&covered);
+            bigint_array_free(&solution);
+            return 1;
+        }
+        bigint_array_free(stock);
+        *stock=updated;
+    }
+    BigInt total{nullptr};
+    bigint_init(&total,"0");
+    for (size_t i=0;i<solution.len;++i) {
+        BigInt next{nullptr};
+        if (!bigint_add(&total,&solution.items[i],&next)) {
+            bigint_free(&next);break;
+        }
+        bigint_free(&total);total=next;
+    }
+    printf("Cambio aceptado: %s centimos; piezas=%s.\n",
+           partial ? covered.digits : amount.digits,
+           total.digits ? total.digits : "desconocido");
+    app_console_imprimir_resultado(denominaciones,&solution,stock,usar_stock);
+    bigint_free(&total);
+    bigint_free(&amount);bigint_free(&covered);
+    bigint_array_free(&solution);
+    return 1;
+}
+
 int app_console_run(void)
 {
     char moneda[MAX_MONEDA_NOMBRE + 1];
@@ -915,6 +1053,15 @@ int app_console_run(void)
                     bigint_free(&cantidad);
                     ejecutando = 0;
                     break;
+                }
+
+                if (estadoCantidad == 5 || estadoCantidad == 6)
+                {
+                    int status = flujo_cambio_avanzado(monedaClave,&monedas,&stock,
+                                                     opcion=='b',estadoCantidad==5);
+                    bigint_free(&cantidad);
+                    if (!status) {ejecutando=0;break;}
+                    continue;
                 }
 
                 if (estadoCantidad == 2)
