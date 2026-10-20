@@ -111,3 +111,15 @@ proceso**, sin ejecutar el binario original en C ni comandos shell.
 Los modos de caja con inventario y los ajustes de administración emplean
 las transacciones nativas de stock. Actions comprueba los menús por
 stdin en Linux, Windows y macOS.
+
+
+## Lanzador de interfaz gráfica
+
+La consola admite \`progvoraz --gui\` igual que la versión C. Abre la GUI
+compilada correspondiente a la plataforma sin invocar un shell:
+\`CreateProcessA\` en Windows o \`posix_spawn\` en macOS/Linux.
+En macOS se admite la interfaz Swift compilada con el nombre
+\`progvoraz_gui_swift\` y el ejecutable portable de respaldo.
+El ejecutable debe encontrarse junto al programa principal; cuando falta,
+la aplicación devuelve un error en lugar de intentar rutas arbitrarias.
+La ejecución desde CLI no bloquea a la consola.
