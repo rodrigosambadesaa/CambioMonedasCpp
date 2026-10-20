@@ -270,7 +270,7 @@ static int pedir_cantidad(BigInt *cantidad)
     char comando[2048];
     BigInt tmp = {0};
 
-    printf("Cantidad en centimos (0, volver, limite, cercano o salir): ");
+    printf("Cantidad en centimos (0, volver, limite, cercano, especifico, historial, resumen o salir): ");
     if (!leer_linea(buffer, sizeof(buffer)))
         return -1;
 
@@ -289,6 +289,15 @@ static int pedir_cantidad(BigInt *cantidad)
         return 5;
     if (strcmp(comando, "cercano") == 0 || strcmp(comando, "nearest") == 0)
         return 6;
+    if (strcmp(comando, "especifico") == 0 || strcmp(comando, "specific") == 0 ||
+        strcmp(comando, "e") == 0 || strcmp(comando, "2") == 0)
+        return 7;
+    if (strcmp(comando, "historial") == 0 || strcmp(comando, "history") == 0 ||
+        strcmp(comando, "h") == 0 || strcmp(comando, "3") == 0)
+        return 8;
+    if (strcmp(comando, "resumen") == 0 || strcmp(comando, "summary") == 0 ||
+        strcmp(comando, "r") == 0 || strcmp(comando, "4") == 0)
+        return 9;
 
     if (strcmp(comando, "volver") == 0 || strcmp(comando, "0") == 0)
         return 2;
@@ -823,6 +832,52 @@ static int flujo_cambio_avanzado(const char *clave, const BigIntArray *denominac
     return 1;
 }
 
+// Currency-scoped sub-option: reuse independent C++ --specific validation
+// and atomic stock update, preserving the selected currency automatically.
+static int ejecutar_especifico_moneda(const char *clave,
+                                     const BigIntArray *denominaciones,
+                                     BigIntArray *stock, bool con_stock)
+{
+    if (!clave || !denominaciones || !denominaciones->items) return 1;
+    printf("Denominaciones: ");
+    for (size_t i=0;i<denominaciones->len;++i)
+        printf("%s%s",i?", ":"",denominaciones->items[i].digits);
+    printf("\n");
+    char recibidas[4096],devueltas[4096];
+    printf("Cantidades recibidas, separadas por comas: ");
+    if (!leer_linea(recibidas,sizeof(recibidas))) return 0;
+    printf("Cantidades entregadas, separadas por comas: ");
+    if (!leer_linea(devueltas,sizeof(devueltas))) return 0;
+    std::vector<std::string> args={"progvoraz","--specific",clave,recibidas,devueltas};
+    if (con_stock) args.push_back("--specific-stock");
+    std::vector<char *> argv;
+    for (auto &item:args) argv.push_back(item.data());
+    int status=run_portable_cli(static_cast<int>(argv.size()),argv.data());
+    if (status!=0) {
+        printf("Cambio especifico rechazado (codigo %d).\n",status);
+    } else if (con_stock && stock) {
+        BigIntArray latest{};
+        if (cargar_stock_moneda(clave,&latest) &&
+            latest.len==denominaciones->len) {
+            bigint_array_free(stock);
+            *stock=latest;
+        } else {
+            bigint_array_free(&latest);
+            printf("Cambio aplicado; no se pudo refrescar el inventario mostrado.\n");
+        }
+    }
+    return 1;
+}
+
+static void mostrar_resumen_moneda_seleccionada(const char *clave)
+{
+    std::vector<std::string> args={"progvoraz","--summary",clave};
+    std::vector<char *> argv;
+    for (auto &item:args) argv.push_back(item.data());
+    if (run_portable_cli(static_cast<int>(argv.size()),argv.data())!=0)
+        printf("No se pudo consultar el resumen de la moneda.\n");
+}
+
 static void mostrar_monedas_disponibles(void)
 {
     std::ifstream source("monedas.txt");
@@ -1086,6 +1141,27 @@ int app_console_run(void)
                     bigint_free(&cantidad);
                     ejecutando = 0;
                     break;
+                }
+
+                if (estadoCantidad == 7)
+                {
+                    int keepRunning=ejecutar_especifico_moneda(
+                        monedaClave,&monedas,&stock,opcion=='b');
+                    bigint_free(&cantidad);
+                    if (!keepRunning) {ejecutando=0;break;}
+                    continue;
+                }
+                if (estadoCantidad == 8)
+                {
+                    menu_global_command("historial");
+                    bigint_free(&cantidad);
+                    continue;
+                }
+                if (estadoCantidad == 9)
+                {
+                    mostrar_resumen_moneda_seleccionada(monedaClave);
+                    bigint_free(&cantidad);
+                    continue;
                 }
 
                 if (estadoCantidad == 5 || estadoCantidad == 6)

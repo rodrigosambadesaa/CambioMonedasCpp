@@ -60,6 +60,17 @@ jobs:
           curl --fail --silent http://127.0.0.1:19377/export_stock_json | grep -q '"monedas"'
           printf 'mode,moneda,monto\na,euro,6\n' | curl --fail --silent --data-binary @- http://127.0.0.1:19377/batch | grep -q 'OK total='
 
+      - name: Currency specific exchange sub-menu (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          printf 'a\neuro\nespecifico\n1,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n1,0,0,0,0,0,0,0,0,0,0,0,0,0,0\nresumen\nsalir\n' |
+            ./progvoraz > selected-specific.log
+          grep -q 'OK moneda=euro total_centimos=50000' selected-specific.log
+          grep -q 'Moneda=euro' selected-specific.log
+          printf 'a\neuro\nespecifico\n1,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\nsalir\n' |
+            ./progvoraz > selected-specific-invalid.log
+          grep -q 'Cambio especifico rechazado' selected-specific-invalid.log
+
       - name: Interactive global menu (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -204,6 +215,24 @@ jobs:
           if ($output -notmatch 'Moneda=euro' -or
               $output -notmatch 'Origen=127 Destino=127') {
               throw 'Interactive global menu smoke failed'
+          }
+
+      - name: Currency specific exchange sub-menu (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = @"
+          a
+          euro
+          especifico
+          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+          1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+          resumen
+          salir
+          "@ | .\progvoraz.exe | Out-String
+          if ($output -notmatch 'OK moneda=euro total_centimos=50000' -or
+              $output -notmatch 'Moneda=euro') {
+              throw 'Specific selected currency sub-menu failed'
           }
 
       - name: Native GUI launch from CLI (Windows)

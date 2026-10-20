@@ -208,3 +208,14 @@ Actions prueba el cálculo de 6 céntimos con exactamente 3 piezas.
 ## Lista dinámica de divisas en app_console.cpp
 
 Se ha incorporado el equivalente de `mostrar_monedas_disponibles` del C original. Al entrar en cada modo se exploran las claves presentes en `monedas.txt`, se valida que existan denominaciones y stock congruentes y se muestra el número de denominaciones disponibles. No se presupone una lista fija de divisas. La interfaz y el contenido se prueban por stdin en GitHub Actions.
+
+## Suboperaciones por divisa seleccionada
+
+La sesión interactiva de app_console.cpp admite ahora `especifico`,
+`historial` y `resumen` sin abandonar la moneda seleccionada, al igual
+que el submenú del C original. El modo específico recibe dos vectores
+CSV de cantidades; el modo A valida los valores y no altera stock,
+mientras que el B llama a la operación transaccional con bloqueo
+interproceso, sustitución atómica y relectura del balance.
+Se reutiliza la CLI C++ interna, sin invocar ejecutables ni intérpretes.
+Actions comprueba la operación correcta y el rechazo por valores desiguales.
