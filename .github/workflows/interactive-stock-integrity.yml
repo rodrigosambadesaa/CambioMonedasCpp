@@ -1,0 +1,34 @@
+name: Native selected-currency monetary integrity
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-exchange:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build native console (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: make release
+      - name: Build native console (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+      - name: Test real persisted inventory (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: python3 tests/test_selected_currency_transactions.py ./progvoraz
+      - name: Test real persisted inventory (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python tests/test_selected_currency_transactions.py ./progvoraz.exe
