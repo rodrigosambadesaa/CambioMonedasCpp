@@ -100,3 +100,14 @@ todas las divisas y sus longitudes antes de reemplazarlo mediante
 el mecanismo de staging con sustitución de destino usado por el backend.
 No se borra primero el inventario de Windows. Se incluyen pruebas de
 snapshot incompleto (sin mutación) y restauración correcta.
+
+
+## Menú interactivo con funciones globales
+
+La consola incluye ahora \`x/convertir\`, \`caja\`, \`historial\`,
+\`resumen\`, \`snapshot\`, \`restaurar\`, \`reporte\` y \`json\`,
+con alias en inglés. Cada una reutiliza la CLI C++20 **en el mismo
+proceso**, sin ejecutar el binario original en C ni comandos shell.
+Los modos de caja con inventario y los ajustes de administración emplean
+las transacciones nativas de stock. Actions comprueba los menús por
+stdin en Linux, Windows y macOS.
