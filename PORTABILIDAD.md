@@ -156,3 +156,7 @@ Los importes BigInt grandes con dos denominaciones (máximas hasta 50.000 cénti
 ## Límites superiores de piezas y precisión arbitraria
 
 Se ha corregido la interpretación de `SIZE_MAX` en el fallback BigInt: es un centinela que significa **sin límite superior**, no el máximo de piezas admisible. Los importes que requieran más de 2⁶⁴−1 monedas se aceptan cuando no hay límite de piezas, mientras que los máximos explícitos siguen siendo vinculantes. Una prueba genera un importe astronómico con una única denominación de 75.001 céntimos.
+
+## Cambio exacto disperso con stock finito
+
+La ruta C++ para importes superiores al límite de DP incorpora estados BigInt dispersos `(importe, piezas)` si el stock suma como máximo 512 piezas. Los paquetes binarios de unidades evitan enumerar cantidades enormes y el estado conserva las soluciones no mínimas necesarias para rangos exactos. También se soporta cambio cercano con stock limitado. Se incluye un límite de 250.000 estados y pruebas con denominaciones de 800.000, 700.000 y 100.000 céntimos, donde la vía voraz no encuentra una solución existente.
