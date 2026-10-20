@@ -296,8 +296,30 @@ static void test_bigint_two_denominations(void) {
     bigint_array_free(&stock);bigint_array_free(&tooLittle);
     bigint_array_free(&values);bigint_free(&amount);
 }
+
+static void test_more_than_size_t_max_coins(void) {
+    const char *d[]={"75001"}, *single[]={"999999999999999999999999999999999999999999999999"};
+    BigIntArray denom{},stock{},solution{};
+    BigInt amount{nullptr},million{nullptr};
+    check_int(crear_arreglo(&denom,d,1),"huge single denomination");
+    check_int(crear_arreglo(&stock,single,1),"huge piece count");
+    check_int(bigint_multiply(&denom.items[0],&stock.items[0],&amount),
+              "huge amount from count and denomination");
+    check_int(calcular_cambio_optimo(&amount,&denom,&solution),
+              "SIZE_MAX must mean unbounded number of pieces");
+    check_arreglo_texto(&solution,single,1,
+                        "the result preserves counts larger than size_t");
+    bigint_array_free(&solution);
+    check_int(!calcular_cambio_optimo_con_limite(&amount,&denom,100,&solution),
+              "explicit max 100 pieces must reject astronomical count");
+    bigint_array_free(&solution);
+    bigint_array_free(&stock);bigint_array_free(&denom);
+    bigint_free(&amount);bigint_free(&million);
+}
+
 int main(void)
 {
+    test_more_than_size_t_max_coins();
     test_bigint_two_denominations();
     test_noncanonical_large_residue();
     test_near_high_amount();

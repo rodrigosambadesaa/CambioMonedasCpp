@@ -152,3 +152,7 @@ Se ha añadido un algoritmo exacto de caminos mínimos por clases residuales par
 ## Solución diofántica con inventario y dos denominaciones
 
 Los importes BigInt grandes con dos denominaciones (máximas hasta 50.000 céntimos) se resuelven ahora por aritmética diofántica y Euclides extendido, también con stock limitado y restricciones de piezas. No es necesario construir una tabla proporcional al importe; se comprueba la igualdad exacta, los límites y la solución óptima mediante el máximo número factible de piezas de mayor denominación. Las nuevas pruebas abarcan 500.006 céntimos, inventario insuficiente y rangos exactos.
+
+## Límites superiores de piezas y precisión arbitraria
+
+Se ha corregido la interpretación de `SIZE_MAX` en el fallback BigInt: es un centinela que significa **sin límite superior**, no el máximo de piezas admisible. Los importes que requieran más de 2⁶⁴−1 monedas se aceptan cuando no hay límite de piezas, mientras que los máximos explícitos siguen siendo vinculantes. Una prueba genera un importe astronómico con una única denominación de 75.001 céntimos.
