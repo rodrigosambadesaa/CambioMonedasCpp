@@ -563,9 +563,20 @@ int launch_native_gui(const char *caller) {
 int run_portable_cli(int argc, char **argv) {
     if (argc <= 1) return -1; // interfaz de consola existente
     std::vector<std::string> args(argv + 1, argv + argc);
+    if (std::find(args.begin(), args.end(), "--json") != args.end()) {
+#ifdef _WIN32
+        if (_putenv_s("PROGVORAZ_JSON", "1") != 0)
+            throw std::runtime_error("No se pudo activar el renderer JSON");
+#else
+        if (setenv("PROGVORAZ_JSON", "1", 1) != 0)
+            throw std::runtime_error("No se pudo activar el renderer JSON");
+#endif
+        if (args.size() == 1) return -1; // continuar con el menu interactivo
+    }
+
     if (has(args, "--help") || has(args, "-h")) {
         std::cout << "ProgVoraz C++ --input CSV [--output CSV] [--log LOG] | --stream | --docker\n"
-                  << "--lang es|en --export-stock-json FILE --export-report FILE\n"
+                  << "--lang es|en --json (menu) --export-stock-json FILE --export-report FILE\n"
                   << "--snapshot-stock FILE --restore-stock FILE --convert FROM TO CENTS [--convert-stock]\n"
                   << "--specific CURRENCY RECEIVED_CSV RETURNED_CSV [--specific-stock]\n"
                   << "--history [--tail N] --summary CURRENCY\n"

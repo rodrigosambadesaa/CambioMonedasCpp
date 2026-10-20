@@ -608,6 +608,19 @@ static int cambio_stock(const BigInt *monto, const BigIntArray *denominaciones, 
 
 static void imprimir_resultado(const BigIntArray *monedas, const BigIntArray *solucion, const BigIntArray *stock, int usarStock)
 {
+    if (const char *enabled = std::getenv("PROGVORAZ_JSON"); enabled && *enabled) {
+        printf("{\"resultado\": [");
+        for (size_t i = 0; i < monedas->len; ++i) {
+            if (i) printf(",");
+            printf("{\"denominacion\": \"%s\", \"cantidad\": \"%s\"",
+                   monedas->items[i].digits, solucion->items[i].digits);
+            if (usarStock && stock)
+                printf(", \"stock\": \"%s\"", stock->items[i].digits);
+            printf("}");
+        }
+        printf("]}\n");
+        return;
+    }
     dibujar_linea();
     printf("Resultado del cambio\n");
     dibujar_linea();
@@ -662,7 +675,10 @@ static void imprimir_stock_administrador(const BigIntArray *monedas, const BigIn
 
 int main(int argc, char **argv)
 {
-    if (argc > 1) return run_portable_cli(argc, argv);
+    if (argc > 1) {
+        int code = run_portable_cli(argc, argv);
+        if (code != -1) return code;
+    }
     char moneda[MAX_MONEDA_NOMBRE + 1];
     char monedaClave[MAX_MONEDA_NOMBRE + 1];
     char monedaCmd[MAX_MONEDA_NOMBRE + 1];

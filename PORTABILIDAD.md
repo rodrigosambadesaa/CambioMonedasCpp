@@ -123,3 +123,14 @@ En macOS se admite la interfaz Swift compilada con el nombre
 El ejecutable debe encontrarse junto al programa principal; cuando falta,
 la aplicación devuelve un error en lugar de intentar rutas arbitrarias.
 La ejecución desde CLI no bloquea a la consola.
+
+
+## Salida JSON de cambio interactivo
+
+\`--json\` activa en consola el mismo formato de resultado del C original:
+\`{"resultado":[{"denominacion":"...", "cantidad":"...", "stock":"..."}]}\`.
+El campo \`stock\` solo aparece en modo limitado. Los números se serializan
+como cadenas de precisión arbitraria desde BigInt, sin redondeos.
+La variable \`PROGVORAZ_JSON=1\` activa el mismo formato.
+Se mantiene la interfaz de texto alrededor de los resultados para
+preservar la experiencia del programa original.
