@@ -35,6 +35,8 @@ extern char **environ;
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 namespace fs = std::filesystem;
 namespace {
@@ -67,8 +69,18 @@ std::string currency(std::string name) {
 }
 
 Blocks read_blocks(const fs::path &path, bool stock = false) {
-    std::ifstream file(path);
-    if (!file) throw std::runtime_error("No se pudo abrir " + path.string());
+    std::ifstream file;
+    // Win32 may briefly reject a read while another process atomically
+    // replaces stock.txt. A bounded read-open retry prevents a false
+    // currency/inventory failure. Do not retry the financial transaction.
+    for (int attempt=0; attempt<200; ++attempt) {
+        file.open(path);
+        if (file.is_open()) break;
+        file.clear();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!file.is_open())
+        throw std::runtime_error("No se pudo abrir " + path.string());
     Blocks result;
     std::string current, token;
     while (file >> token) {

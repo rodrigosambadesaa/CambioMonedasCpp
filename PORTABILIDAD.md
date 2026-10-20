@@ -168,3 +168,7 @@ Cuando otro proceso mantiene abierto temporalmente `stock.txt` sin `FILE_SHARE_D
 ### Cierre de lectores antes de sustituir el inventario (Windows)
 
 La transacción C++ cierra ahora explícitamente el `std::ifstream` usado para leer el inventario antes de ejecutar `MoveFileExA`. Dejar abierto ese lector durante la sustitución podía impedirla por permisos `FILE_SHARE_DELETE`, incluso dentro del mismo proceso. El bloqueo separado `stock.txt.lock` permanece adquirido, por lo que cerrar el flujo de lectura no permite otra escritura concurrente cooperante.
+
+### Lecturas de stock durante reemplazos concurrentes
+
+Las cargas de inventario de la CLI C++ reintentan la apertura del archivo durante un máximo de dos segundos si Windows impide transitoriamente el acceso mientras otro proceso está terminando una sustitución atómica. Se vuelve a abrir y leer el archivo completo y **no** se repite una operación económica ya completada. Las escrituras siguen exigiendo el bloqueo `stock.txt.lock`.
