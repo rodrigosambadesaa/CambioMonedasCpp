@@ -12,6 +12,10 @@
 #include <regex>
 
 #include "portable_cli.h"
+#include "csv_io.h"
+#include "json_io.h"
+#include "gui_launcher.h"
+#include "exchange_api.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
 #include "moneda_gestion.h"
@@ -28,6 +32,7 @@ extern char **environ;
 #endif
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <optional>
@@ -73,7 +78,7 @@ Blocks read_blocks(const fs::path &path, bool stock = false) {
     // Win32 may briefly reject a read while another process atomically
     // replaces stock.txt. A bounded read-open retry prevents a false
     // currency/inventory failure. Do not retry the financial transaction.
-    for (int attempt=0; attempt<200; ++attempt) {
+    for (int attempt=0; attempt<1000; ++attempt) {
         file.open(path);
         if (file.is_open()) break;
         file.clear();
@@ -209,19 +214,6 @@ std::vector<std::string> split(const std::string &line, char delim) {
     return result;
 }
 
-std::string csv_escape(const std::string &v) {
-    if (v.find_first_of(",\"\r\n") == std::string::npos) return v;
-    std::string escaped = "\"";
-    for (char c : v) { if (c == '"') escaped += '"'; escaped += c; }
-    return escaped + "\"";
-}
-
-void csv_row(std::ostream &out, const std::vector<std::string> &row) {
-    for (size_t i = 0; i < row.size(); ++i)
-        out << (i ? "," : "") << csv_escape(row[i]);
-    out << '\n';
-}
-
 bool nonnegative_size(const std::string &s, size_t &value) {
     if (!numeric(s)) return false;
     try {
@@ -293,22 +285,6 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
     }
 }
 
-void export_json(std::ostream &out, const Blocks &denoms, const Blocks &stocks) {
-    out << "{\n  \"monedas\": [\n";
-    bool first = true;
-    for (const auto &[name, d] : denoms) {
-        if (!valid(name, denoms, stocks)) continue;
-        out << (first ? "" : ",\n") << "    {\"nombre\":\"" << name << "\",\"denominaciones\":[";
-        for (size_t i = 0; i < d.size(); ++i) out << (i ? "," : "") << "\"" << d[i] << "\"";
-        out << "],\"stock\":[";
-        for (size_t i = 0; i < stocks.at(name).size(); ++i)
-            out << (i ? "," : "") << stocks.at(name)[i];
-        out << "]}";
-        first = false;
-    }
-    out << "\n  ]\n}\n";
-}
-
 void export_report(std::ostream &out, const Blocks &denoms, const Blocks &stocks) {
     out << "REPORTE GLOBAL DE INVENTARIO\n";
     for (const auto &[name, d] : denoms) {
@@ -343,6 +319,17 @@ std::string iso_code(const std::string &name) {
 
 struct DecimalRate { std::string numerator, denominator, printable; };
 
+
+DecimalRate parse_decimal_rate(std::string digits) {
+    std::string printable=digits;
+    std::size_t dot=digits.find('.');
+    std::size_t scale=(dot==std::string::npos) ? 0 : digits.size()-dot-1;
+    if (scale > 30 || digits.size() > 100) throw std::runtime_error("Tasa demasiado precisa");
+    if (dot!=std::string::npos) digits.erase(dot,1);
+    if (!numeric(digits) || std::all_of(digits.begin(),digits.end(),[](char c){return c=='0';}))
+        throw std::runtime_error("Tasa cero o invalida");
+    return {digits, "1"+std::string(scale,'0'), printable};
+}
 DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     if (from==to) return {"1","1","1"};
     std::ifstream input("rates_stub.json");
@@ -353,15 +340,7 @@ DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     std::smatch matches;
     if (!std::regex_search(document, matches, pattern))
         throw std::runtime_error("No existe tasa para " + from + "_" + to);
-    std::string digits=matches[1].str();
-    std::string printable=digits;
-    std::size_t dot=digits.find('.');
-    std::size_t scale=(dot==std::string::npos) ? 0 : digits.size()-dot-1;
-    if (scale > 30 || digits.size() > 100) throw std::runtime_error("Tasa demasiado precisa");
-    if (dot!=std::string::npos) digits.erase(dot,1);
-    if (!numeric(digits) || std::all_of(digits.begin(),digits.end(),[](char c){return c=='0';}))
-        throw std::runtime_error("Tasa cero o invalida");
-    return {digits, "1"+std::string(scale,'0'), printable};
+    return parse_decimal_rate(matches[1].str());
 }
 
 std::string convert_cents(const std::string &amount, const DecimalRate &rate) {
@@ -486,7 +465,7 @@ void handle_http(HttpSocket client) {
         Blocks denominations = read_blocks("monedas.txt");
         Blocks stocks = read_blocks("stock.txt", true);
         std::ostringstream out;
-        export_json(out, denominations, stocks);
+        export_stock_json_cpp(out, denominations, stocks, [&](const std::string &key) { return valid(key, denominations, stocks); });
         send_http(client, 200, "OK", "application/json; charset=utf-8", out.str());
         return;
     }
@@ -530,47 +509,6 @@ int serve_local_http(int port) {
 
 } // namespace
 
-
-namespace {
-int launch_native_gui(const char *caller) {
-    fs::path origin = caller && *caller ? fs::absolute(caller).parent_path()
-                                       : fs::current_path();
-#ifdef _WIN32
-    fs::path executable = origin / "progvoraz_gui.exe";
-#else
-#ifdef __APPLE__
-    fs::path executable = origin / "progvoraz_gui";
-    if (!fs::exists(executable)) executable = origin / "progvoraz_gui_swift";
-    if (!fs::exists(executable)) executable = origin / "progvoraz_gui_portable";
-#else
-    fs::path executable = origin / "progvoraz_gui";
-#endif
-#endif
-    if (!fs::is_regular_file(executable))
-        throw std::runtime_error("No se encontro la GUI compilada junto al programa.");
-#ifdef _WIN32
-    STARTUPINFOA si{};
-    si.cb=sizeof(si);
-    PROCESS_INFORMATION pi{};
-    std::string absolute=executable.string();
-    if (!CreateProcessA(absolute.c_str(),nullptr,nullptr,nullptr,FALSE,0,
-                        nullptr,nullptr,&si,&pi))
-        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
-                                "No se pudo iniciar la GUI Win32");
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-#else
-    pid_t child{};
-    std::string absolute=executable.string();
-    char *child_argv[]={absolute.data(),nullptr};
-    int rc=posix_spawn(&child,absolute.c_str(),nullptr,nullptr,child_argv,environ);
-    if (rc!=0) throw std::system_error(rc,std::generic_category(),
-                                       "No se pudo iniciar la GUI");
-#endif
-    std::cout<<"Interfaz GUI iniciada: "<<executable.filename().string()<<'\n';
-    return 0;
-}
-}
 
 int run_portable_cli(int argc, char **argv) {
     if (argc <= 1) return -1; // interfaz de consola existente
@@ -665,7 +603,7 @@ int run_portable_cli(int argc, char **argv) {
             if (path.empty()) throw std::runtime_error("Falta destino de exportacion");
             std::ofstream out(path);
             if (!out) throw std::runtime_error("No se pudo abrir " + path);
-            if (json) export_json(out, denoms, stocks);
+            if (json) export_stock_json_cpp(out, denoms, stocks, [&](const std::string &key) { return valid(key, denoms, stocks); });
             else export_report(out, denoms, stocks);
             if (!out) throw std::runtime_error("Error escribiendo " + path);
             return 0;
@@ -740,7 +678,13 @@ int run_portable_cli(int argc, char **argv) {
             size_t index = static_cast<size_t>(it - args.begin());
             if (index + 3 >= args.size()) throw std::runtime_error("Faltan argumentos --convert");
             std::string from = currency(args[index + 1]), to = currency(args[index + 2]);
-            DecimalRate rate=read_stub_rate(iso_code(from),iso_code(to));
+            const std::string from_iso=iso_code(from), to_iso=iso_code(to);
+            const char *configured=std::getenv("PROGVORAZ_EXCHANGE_SOURCE");
+            const bool force_stub=configured && std::string(configured)=="stub";
+            auto remote=force_stub ? std::optional<std::string>() :
+                                  fetch_reference_rate(from_iso, to_iso);
+            DecimalRate rate=remote ? parse_decimal_rate(*remote) :
+                                     read_stub_rate(from_iso,to_iso);
             std::string destination=convert_cents(args[index + 3],rate);
             auto outcome = calculate(destination, to, has(args, "--convert-stock"),
                                      {}, {}, denoms, stocks);

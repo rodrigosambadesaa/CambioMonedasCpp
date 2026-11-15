@@ -1,0 +1,24 @@
+name: C++ optional HTTPS exchange provider
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-curl-provider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install libcurl development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+      - name: Build native HTTPS provider
+        run: make release USE_LIBCURL=1
+      - name: Verify deterministic fallback and identity with HTTP provider compiled
+        run: |
+          python3 tests/test_stock_json_contract.py ./progvoraz
+          python3 tests/test_exchange_stub.py ./progvoraz

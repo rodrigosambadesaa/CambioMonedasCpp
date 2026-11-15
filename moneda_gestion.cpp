@@ -159,7 +159,7 @@ class StockFileLock {
 #endif
 public:
     StockFileLock() {
-        for (int i=0; i<200; ++i) {
+        for (int i=0; i<1000; ++i) {
 #ifdef _WIN32
             handle_=CreateFileA("stock.txt.lock",GENERIC_READ|GENERIC_WRITE,0,nullptr,
                                OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
@@ -199,7 +199,7 @@ bool replace_atomic(const std::vector<std::string> &lines) {
         // without FILE_SHARE_DELETE. Keep the global inventory lock held and
         // retry ONLY the atomic replacement, never the entire transaction.
         bool replaced=false;
-        for (int attempt=0; attempt<200; ++attempt) {
+        for (int attempt=0; attempt<1000; ++attempt) {
             if (MoveFileExA(staging.string().c_str(), "stock.txt",
                 MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) {
                 replaced=true;

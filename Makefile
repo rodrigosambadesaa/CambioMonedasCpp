@@ -1,5 +1,5 @@
 APP := progvoraz
-SRC := main.cpp app_console.cpp portable_cli.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
+SRC := main.cpp app_console.cpp portable_cli.cpp gui_launcher.cpp csv_io.cpp json_io.cpp exchange_api.cpp vector_dinamico.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp
 GUI_APP := progvoraz_gui
 GUI_SRC_WIN := gui_window.cpp moneda_gestion.cpp bigint.cpp algoritmo_cambio.cpp vector_dinamico.cpp
 GUI_SRC_MAC := gui_macos.swift
@@ -7,6 +7,11 @@ GUI_SRC_PORTABLE := gui_portable.cpp moneda_gestion.cpp bigint.cpp algoritmo_cam
 
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic
+
+ifeq ($(USE_LIBCURL),1)
+CXXFLAGS += -DUSE_LIBCURL
+LDFLAGS += -lcurl
+endif
 LDFLAGS ?=
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32
