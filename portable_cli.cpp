@@ -464,7 +464,7 @@ void handle_http(HttpSocket client) {
         Blocks denominations = read_blocks("monedas.txt");
         Blocks stocks = read_blocks("stock.txt", true);
         std::ostringstream out;
-        export_json(out, denominations, stocks);
+        export_stock_json_cpp(out, denominations, stocks, [&](const std::string &key) { return valid(key, denominations, stocks); });
         send_http(client, 200, "OK", "application/json; charset=utf-8", out.str());
         return;
     }
