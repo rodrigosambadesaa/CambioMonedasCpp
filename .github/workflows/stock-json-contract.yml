@@ -24,7 +24,7 @@ jobs:
         run: make release
       - name: Compile C++ (Windows)
         if: runner.os == 'Windows'
-        run: g++ -std=c++20 -O2 main.cpp app_console.cpp portable_cli.cpp csv_io.cpp json_io.cpp exchange_api.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+        run: g++ -std=c++20 -O2 main.cpp app_console.cpp portable_cli.cpp gui_launcher.cpp csv_io.cpp json_io.cpp exchange_api.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
       - name: Validate exported JSON (Unix)
         if: runner.os != 'Windows'
         run: python tests/test_stock_json_contract.py ./progvoraz
