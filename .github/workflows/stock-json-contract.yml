@@ -31,3 +31,9 @@ jobs:
       - name: Validate exported JSON (Windows)
         if: runner.os == 'Windows'
         run: python tests/test_stock_json_contract.py .\\progvoraz.exe
+      - name: Validate deterministic conversion (Unix)
+        if: runner.os != 'Windows'
+        run: python tests/test_exchange_stub.py ./progvoraz
+      - name: Validate deterministic conversion (Windows)
+        if: runner.os == 'Windows'
+        run: python tests/test_exchange_stub.py .\\progvoraz.exe
