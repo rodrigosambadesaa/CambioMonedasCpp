@@ -1,0 +1,33 @@
+name: Stock JSON contract (C++)
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stock-json:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile C++ (Unix)
+        if: runner.os != 'Windows'
+        run: make release
+      - name: Compile C++ (Windows)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++20 -O2 main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+      - name: Validate exported JSON (Unix)
+        if: runner.os != 'Windows'
+        run: python tests/test_stock_json_contract.py ./progvoraz
+      - name: Validate exported JSON (Windows)
+        if: runner.os == 'Windows'
+        run: python tests/test_stock_json_contract.py .\\progvoraz.exe
