@@ -12,6 +12,7 @@
 #include <regex>
 
 #include "portable_cli.h"
+#include "csv_io.h"
 #include "exchange_api.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
@@ -209,19 +210,6 @@ std::vector<std::string> split(const std::string &line, char delim) {
     std::string item;
     while (std::getline(stream, item, delim)) result.push_back(trim(item));
     return result;
-}
-
-std::string csv_escape(const std::string &v) {
-    if (v.find_first_of(",\"\r\n") == std::string::npos) return v;
-    std::string escaped = "\"";
-    for (char c : v) { if (c == '"') escaped += '"'; escaped += c; }
-    return escaped + "\"";
-}
-
-void csv_row(std::ostream &out, const std::vector<std::string> &row) {
-    for (size_t i = 0; i < row.size(); ++i)
-        out << (i ? "," : "") << csv_escape(row[i]);
-    out << '\n';
 }
 
 bool nonnegative_size(const std::string &s, size_t &value) {
