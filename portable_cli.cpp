@@ -12,6 +12,7 @@
 #include <regex>
 
 #include "portable_cli.h"
+#include "exchange_api.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
 #include "moneda_gestion.h"
@@ -28,6 +29,7 @@ extern char **environ;
 #endif
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <optional>
@@ -343,6 +345,17 @@ std::string iso_code(const std::string &name) {
 
 struct DecimalRate { std::string numerator, denominator, printable; };
 
+
+DecimalRate parse_decimal_rate(std::string digits) {
+    std::string printable=digits;
+    std::size_t dot=digits.find('.');
+    std::size_t scale=(dot==std::string::npos) ? 0 : digits.size()-dot-1;
+    if (scale > 30 || digits.size() > 100) throw std::runtime_error("Tasa demasiado precisa");
+    if (dot!=std::string::npos) digits.erase(dot,1);
+    if (!numeric(digits) || std::all_of(digits.begin(),digits.end(),[](char c){return c=='0';}))
+        throw std::runtime_error("Tasa cero o invalida");
+    return {digits, "1"+std::string(scale,'0'), printable};
+}
 DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     if (from==to) return {"1","1","1"};
     std::ifstream input("rates_stub.json");
@@ -353,15 +366,7 @@ DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     std::smatch matches;
     if (!std::regex_search(document, matches, pattern))
         throw std::runtime_error("No existe tasa para " + from + "_" + to);
-    std::string digits=matches[1].str();
-    std::string printable=digits;
-    std::size_t dot=digits.find('.');
-    std::size_t scale=(dot==std::string::npos) ? 0 : digits.size()-dot-1;
-    if (scale > 30 || digits.size() > 100) throw std::runtime_error("Tasa demasiado precisa");
-    if (dot!=std::string::npos) digits.erase(dot,1);
-    if (!numeric(digits) || std::all_of(digits.begin(),digits.end(),[](char c){return c=='0';}))
-        throw std::runtime_error("Tasa cero o invalida");
-    return {digits, "1"+std::string(scale,'0'), printable};
+    return parse_decimal_rate(matches[1].str());
 }
 
 std::string convert_cents(const std::string &amount, const DecimalRate &rate) {
@@ -740,7 +745,13 @@ int run_portable_cli(int argc, char **argv) {
             size_t index = static_cast<size_t>(it - args.begin());
             if (index + 3 >= args.size()) throw std::runtime_error("Faltan argumentos --convert");
             std::string from = currency(args[index + 1]), to = currency(args[index + 2]);
-            DecimalRate rate=read_stub_rate(iso_code(from),iso_code(to));
+            const std::string from_iso=iso_code(from), to_iso=iso_code(to);
+            const char *configured=std::getenv("PROGVORAZ_EXCHANGE_SOURCE");
+            const bool force_stub=configured && std::string(configured)=="stub";
+            auto remote=force_stub ? std::optional<std::string>() :
+                                  fetch_reference_rate(from_iso, to_iso);
+            DecimalRate rate=remote ? parse_decimal_rate(*remote) :
+                                     read_stub_rate(from_iso,to_iso);
             std::string destination=convert_cents(args[index + 3],rate);
             auto outcome = calculate(destination, to, has(args, "--convert-stock"),
                                      {}, {}, denoms, stocks);
