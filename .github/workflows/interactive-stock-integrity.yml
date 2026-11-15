@@ -24,7 +24,7 @@ jobs:
       - name: Build native console (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp app_console.cpp portable_cli.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
+        run: g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic main.cpp app_console.cpp portable_cli.cpp exchange_api.cpp moneda_gestion.cpp bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o progvoraz.exe -lws2_32
       - name: Test real persisted inventory (Linux/macOS)
         if: runner.os != 'Windows'
         run: python3 tests/test_selected_currency_transactions.py ./progvoraz
