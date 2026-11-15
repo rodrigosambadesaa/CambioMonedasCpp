@@ -77,7 +77,7 @@ Blocks read_blocks(const fs::path &path, bool stock = false) {
     // Win32 may briefly reject a read while another process atomically
     // replaces stock.txt. A bounded read-open retry prevents a false
     // currency/inventory failure. Do not retry the financial transaction.
-    for (int attempt=0; attempt<200; ++attempt) {
+    for (int attempt=0; attempt<1000; ++attempt) {
         file.open(path);
         if (file.is_open()) break;
         file.clear();
