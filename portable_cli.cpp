@@ -13,6 +13,7 @@
 
 #include "portable_cli.h"
 #include "csv_io.h"
+#include "json_io.h"
 #include "exchange_api.h"
 #include "bigint.h"
 #include "algoritmo_cambio.h"
@@ -281,22 +282,6 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
             details += denoms.at(key)[i] + ":" + result->pieces[i] + ";";
         csv_row(out, {"", key, amount, "OK total=" + result->total, details});
     }
-}
-
-void export_json(std::ostream &out, const Blocks &denoms, const Blocks &stocks) {
-    out << "{\n  \"monedas\": [\n";
-    bool first = true;
-    for (const auto &[name, d] : denoms) {
-        if (!valid(name, denoms, stocks)) continue;
-        out << (first ? "" : ",\n") << "    {\"nombre\":\"" << name << "\",\"denominaciones\":[";
-        for (size_t i = 0; i < d.size(); ++i) out << (i ? "," : "") << "\"" << d[i] << "\"";
-        out << "],\"stock\":[";
-        for (size_t i = 0; i < stocks.at(name).size(); ++i)
-            out << (i ? "," : "") << stocks.at(name)[i];
-        out << "]}";
-        first = false;
-    }
-    out << "\n  ]\n}\n";
 }
 
 void export_report(std::ostream &out, const Blocks &denoms, const Blocks &stocks) {
@@ -658,7 +643,7 @@ int run_portable_cli(int argc, char **argv) {
             if (path.empty()) throw std::runtime_error("Falta destino de exportacion");
             std::ofstream out(path);
             if (!out) throw std::runtime_error("No se pudo abrir " + path);
-            if (json) export_json(out, denoms, stocks);
+            if (json) export_stock_json_cpp(out, denoms, stocks, [&](const std::string &key) { return valid(key, denoms, stocks); });
             else export_report(out, denoms, stocks);
             if (!out) throw std::runtime_error("Error escribiendo " + path);
             return 0;
