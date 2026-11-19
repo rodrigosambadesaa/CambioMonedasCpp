@@ -5,6 +5,7 @@
 typedef int TELEMENTO;
 typedef struct STVECTOR *vectorP;
 
+/* *v1 debe estar inicializado a NULL: rechaza recrear un vector vivo. */
 void crear(vectorP *v1, unsigned long tam1);
 void asignar(vectorP v1, unsigned long posicion, TELEMENTO valor);
 TELEMENTO recuperar(vectorP v1, unsigned long posicion);
