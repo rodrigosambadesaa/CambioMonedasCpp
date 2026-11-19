@@ -1,35 +1,22 @@
+#ifndef VECTOR_DINAMICO_H
+#define VECTOR_DINAMICO_H
 
-/* Tipo base almacenado por el vector dinamico. */
+/* API historica C/C++ compatible: los elementos son enteros. */
 typedef int TELEMENTO;
-
-/* Puntero opaco a la estructura interna del vector. */
 typedef struct STVECTOR *vectorP;
 
-/*
- * Reserva memoria para un vector de tam1 elementos.
- * Inicializa cada posicion a 0.
- */
 void crear(vectorP *v1, unsigned long tam1);
-
-/*
- * Asigna un valor en una posicion concreta.
- * Si v1 es nulo o posicion esta fuera de rango, no hace nada.
- */
 void asignar(vectorP v1, unsigned long posicion, TELEMENTO valor);
-
-/*
- * Recupera el valor de una posicion.
- * Devuelve 0 si v1 es nulo o la posicion es invalida.
- */
 TELEMENTO recuperar(vectorP v1, unsigned long posicion);
-
-/*
- * Libera la memoria del vector y deja el puntero a NULL.
- */
 void liberar(vectorP *v1);
-
-/*
- * Devuelve la cantidad de elementos reservados en el vector.
- * Si no existe, devuelve 0.
- */
 unsigned long tamano(vectorP *v1);
+
+/* Crecimiento amortizado, nuevos elementos inicializados a cero.
+ * En error de reserva o desbordamiento se conserva el vector original.
+ */
+unsigned long capacidad_vector(vectorP v1);
+int reservar(vectorP v1, unsigned long nueva_capacidad);
+int redimensionar(vectorP v1, unsigned long nuevo_tam);
+int agregar(vectorP v1, TELEMENTO valor);
+
+#endif
