@@ -14,9 +14,9 @@ struct STVECTOR
 void crear(vectorP *v1, unsigned long tam1)
 {
     vectorP nuevo;
-    if (v1 == NULL)
+    /* Requiere *v1 == NULL: no perder la reserva anterior. */
+    if (v1 == NULL || *v1 != NULL)
         return;
-    *v1 = NULL;
     if ((uintmax_t)tam1 > SIZE_MAX / sizeof(TELEMENTO))
         return;
     nuevo = (vectorP)calloc(1, sizeof(*nuevo));
