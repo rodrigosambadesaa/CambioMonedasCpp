@@ -125,3 +125,8 @@ unsigned long tamano(vectorP *v1)
 {
     return (v1 == NULL || *v1 == NULL) ? 0 : (*v1)->tam;
 }
+
+unsigned long capacidad_vector(vectorP v1)
+{
+    return v1 == NULL ? 0 : v1->capacidad;
+}
