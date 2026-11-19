@@ -1,0 +1,34 @@
+name: Dynamic vector safety and C++ practice
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  vector-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vector unit tests (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -I. tests/test_vector_dinamico.cpp vector_dinamico.cpp -o vector_test
+          ./vector_test
+      - name: Vector unit tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -I. tests/test_vector_dinamico.cpp vector_dinamico.cpp -o vector_test.exe
+          .\vector_test.exe
+      - name: Sanitizers (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          c++ -std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. tests/test_vector_dinamico.cpp vector_dinamico.cpp -o vector_test_san
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 ./vector_test_san
+      - name: Existing practice regression (Linux)
+        if: runner.os == 'Linux'
+        run: make test
