@@ -411,7 +411,13 @@ void send_http(HttpSocket client, int code, const std::string &reason,
     std::size_t sent = 0;
     while (sent < response.size()) {
         auto size = static_cast<int>(std::min<std::size_t>(response.size() - sent, 8192));
+        /* A peer can abort between recv and send. MSG_NOSIGNAL prevents
+           a SIGPIPE from terminating the entire Unix server. */
+#ifdef MSG_NOSIGNAL
+        int n = send(client, response.data() + sent, size, MSG_NOSIGNAL);
+#else
         int n = send(client, response.data() + sent, size, 0);
+#endif
         if (n <= 0) break;
         sent += static_cast<std::size_t>(n);
     }
@@ -491,13 +497,25 @@ void handle_http(HttpSocket client) {
 
 int serve_local_http(int port) {
     if (port < 1 || port > 65535) throw std::invalid_argument("Puerto HTTP invalido");
+    /* A finite lifetime enables accurate leak/FD checks under Valgrind.
+       Production remains unlimited when the variable is not set. */
+    std::size_t max_requests = 0;
+    if (const char *limit = std::getenv("PROGVORAZ_HTTP_MAX_REQUESTS")) {
+        if (!nonnegative_size(limit, max_requests) || max_requests == 0)
+            throw std::invalid_argument("Limite HTTP de pruebas invalido");
+    }
 #ifdef _WIN32
     WSADATA winsock{};
     if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0)
         throw std::runtime_error("Winsock no disponible");
 #endif
     HttpSocket listening = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listening == InvalidHttpSocket) throw std::runtime_error("No se puede abrir socket HTTP");
+    if (listening == InvalidHttpSocket) {
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        throw std::runtime_error("No se puede abrir socket HTTP");
+    }
 #ifndef _WIN32
     int reuse = 1;
     setsockopt(listening, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
@@ -509,19 +527,34 @@ int serve_local_http(int port) {
     if (bind(listening, reinterpret_cast<sockaddr*>(&bind_address), sizeof(bind_address)) != 0 ||
         listen(listening, 16) != 0) {
         close_http(listening);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         throw std::runtime_error("No se pudo escuchar en 127.0.0.1");
     }
     std::cout << "Servidor HTTP local 127.0.0.1:" << port << std::endl;
+    std::size_t served = 0;
     for (;;) {
+        if (max_requests && served >= max_requests) break;
         HttpSocket client = accept(listening, nullptr, nullptr);
         if (client == InvalidHttpSocket) continue;
+#ifdef SO_NOSIGPIPE
+        int no_sigpipe = 1;
+        (void)setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
         try { handle_http(client); }
         catch (const std::exception &ex) {
             std::cerr << "HTTP: " << ex.what() << '\n';
             send_http(client, 500, "Internal Server Error", "text/plain", "Internal Error");
         }
         close_http(client);
+        ++served;
     }
+    close_http(listening);
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return 0;
 }
 
 } // namespace
