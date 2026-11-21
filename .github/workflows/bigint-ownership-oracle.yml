@@ -1,0 +1,61 @@
+name: C++ BigInt ownership and 10k-digit oracle
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bigint-oracle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build isolated C++ BigInt oracle harness
+        shell: bash
+        run: g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -I. tests/bigint_oracle_cli.cpp bigint.cpp -o bigint_oracle.exe
+      - name: Check BigInt against exact Python integers
+        shell: bash
+        run: python tests/test_bigint_property.py ./bigint_oracle.exe --quick
+
+  valgrind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+      - name: Build oracle harness with debug symbols
+        run: g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -I. tests/bigint_oracle_cli.cpp bigint.cpp -o bigint_oracle.exe
+      - name: Exact arithmetic including 10000-digit values
+        run: python tests/test_bigint_property.py ./bigint_oracle.exe
+      - name: Detect leaks on reuse and failure paths
+        run: python tests/test_bigint_property.py ./bigint_oracle.exe --valgrind
+
+  asan:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build with ASan/LSan/UBSan
+        run: g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -fsanitize=address,leak,undefined -fno-omit-frame-pointer -I. tests/bigint_oracle_cli.cpp bigint.cpp -o bigint_oracle.exe
+      - name: Exercise ownership, input rejection and arithmetic
+        run: python tests/test_bigint_property.py ./bigint_oracle.exe --quick
