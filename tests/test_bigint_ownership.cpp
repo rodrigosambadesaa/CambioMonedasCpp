@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <string>
 
 int main() {
     BigInt source{}, left{}, zero{}, result{}, quotient{}, remainder{};
@@ -22,6 +23,17 @@ int main() {
     assert(bigint_divmod(&result, &left, &quotient, &remainder));
     assert(std::strcmp(quotient.digits, "2") == 0);
     assert(std::strcmp(remainder.digits, "0") == 0);
+    // Arithmetic must remain exact far beyond 64 bits, without leaking
+    // intermediate allocations even for a ten-thousand-digit carry chain.
+    BigInt big{}, one{}, large_sum{};
+    std::string large(10000, '9');
+    assert(bigint_init(&big, large.c_str()));
+    assert(bigint_init(&one, "1"));
+    assert(bigint_add(&big, &one, &large_sum));
+    assert(std::string(large_sum.digits) == "1" + std::string(10000, '0'));
+    bigint_free(&big);
+    bigint_free(&one);
+    bigint_free(&large_sum);
     BigIntArray array{};
     assert(bigint_array_create(&array, 3));
     assert(bigint_array_set(&array, 0, &left));
