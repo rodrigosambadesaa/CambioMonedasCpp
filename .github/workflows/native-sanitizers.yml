@@ -86,3 +86,6 @@ jobs:
           valgrind --leak-check=full --show-leak-kinds=all \
             --errors-for-leak-kinds=definite,possible \
             --error-exitcode=99 ./test_ownership_valgrind
+
+      - name: Reject ambiguous and oversized conversion-rate stubs
+        run: python3 tests/test_rate_stub_validation.py ./progvoraz_sanitized
