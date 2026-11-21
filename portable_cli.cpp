@@ -338,14 +338,25 @@ DecimalRate parse_decimal_rate(std::string digits) {
 }
 DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     if (from==to) return {"1","1","1"};
-    std::ifstream input("rates_stub.json");
+    std::ifstream input("rates_stub.json", std::ios::binary);
     if (!input) throw std::runtime_error("No existe rates_stub.json");
-    std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-    if (document.size() > 1024 * 1024) throw std::runtime_error("Archivo de tasas demasiado grande");
+    /* Bound memory BEFORE constructing the document, unlike an unbounded
+       istreambuf_iterator read followed by checking the result's size. */
+    char buffer[16385];
+    input.read(buffer, sizeof(buffer));
+    std::streamsize count = input.gcount();
+    if (count > 16384) throw std::runtime_error("Archivo de tasas demasiado grande");
+    std::string document(buffer, static_cast<std::size_t>(count));
+    const std::regex keyPattern("\"" + from + "_" + to + "\"\\s*:");
+    auto found = std::sregex_iterator(document.begin(), document.end(), keyPattern);
+    if (found == std::sregex_iterator())
+        throw std::runtime_error("No existe tasa para " + from + "_" + to);
+    if (++found != std::sregex_iterator())
+        throw std::runtime_error("Tasa duplicada para " + from + "_" + to);
     const std::regex pattern("\"" + from + "_" + to + "\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)");
     std::smatch matches;
     if (!std::regex_search(document, matches, pattern))
-        throw std::runtime_error("No existe tasa para " + from + "_" + to);
+        throw std::runtime_error("Tasa invalida para " + from + "_" + to);
     return parse_decimal_rate(matches[1].str());
 }
 
