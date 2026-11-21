@@ -1,0 +1,37 @@
+name: C++ HTTP memory and resource audit
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  http-memory:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [valgrind, sanitizers]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Valgrind
+        if: matrix.tool == 'valgrind'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+      - name: Build C++ HTTP executable for Valgrind
+        if: matrix.tool == 'valgrind'
+        run: make debug
+      - name: Build C++ HTTP executable for ASan/LSan/UBSan
+        if: matrix.tool == 'sanitizers'
+        run: |
+          make debug CXXFLAGS='-std=c++20 -O1 -g -Wall -Wextra -Wpedantic -fsanitize=address,leak,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,leak,undefined'
+      - name: Probe real HTTP requests and memory with Valgrind
+        if: matrix.tool == 'valgrind'
+        run: python3 tests/test_http_memory.py ./progvoraz --valgrind
+      - name: Probe real HTTP requests and memory with sanitizers
+        if: matrix.tool == 'sanitizers'
+        run: python3 tests/test_http_memory.py ./progvoraz
