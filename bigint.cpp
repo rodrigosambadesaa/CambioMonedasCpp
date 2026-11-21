@@ -57,6 +57,8 @@ int bigint_init(BigInt *n, const char *text)
     if (normalizado == NULL)
         return 0;
 
+    /* Duplicate before freeing: alias-safe reinitialization with no leak. */
+    free(n->digits);
     n->digits = normalizado;
     return 1;
 }
@@ -228,6 +230,7 @@ int bigint_multiply(const BigInt *a, const BigInt *b, BigInt *out)
     if (a == NULL || b == NULL || out == NULL || a->digits == NULL || b->digits == NULL)
         return 0;
 
+    /* bigint_init replaces a live output safely, even for a zero product. */
     if (bigint_is_zero(a) || bigint_is_zero(b))
         return bigint_init(out, "0");
 
@@ -390,23 +393,26 @@ cleanup:
 
 int bigint_array_create(BigIntArray *arr, size_t len)
 {
-    if (arr == NULL)
+    if (arr == NULL || len == 0 || len > SIZE_MAX / sizeof(BigInt))
         return 0;
 
-    arr->items = (BigInt *)calloc(len, sizeof(BigInt));
-    if (arr->items == NULL)
+    /* Construct separately so a failed allocation leaves the caller's
+       existing array untouched; replace it only when fully initialized. */
+    BigIntArray replacement = {0};
+    replacement.items = (BigInt *)calloc(len, sizeof(BigInt));
+    if (replacement.items == NULL)
         return 0;
-
-    arr->len = len;
-    for (size_t i = 0; i < len; i++)
+    replacement.len = len;
+    for (size_t i = 0; i < len; ++i)
     {
-        if (!bigint_init(&arr->items[i], "0"))
+        if (!bigint_init(&replacement.items[i], "0"))
         {
-            bigint_array_free(arr);
+            bigint_array_free(&replacement);
             return 0;
         }
     }
-
+    bigint_array_free(arr);
+    *arr = replacement;
     return 1;
 }
 
