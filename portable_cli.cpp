@@ -146,22 +146,28 @@ struct OwnedArray {
     OwnedArray &operator=(const OwnedArray &) = delete;
 };
 
+/* Scope-bound BigInt ownership also covers exceptions from std::string.
+   Manual bigint_free after constructing the std::string is not exception-safe. */
+struct OwnedResult {
+    BigInt value{};
+    ~OwnedResult() { bigint_free(&value); }
+    OwnedResult(const OwnedResult &) = delete;
+    OwnedResult &operator=(const OwnedResult &) = delete;
+    OwnedResult() = default;
+};
+
 std::string decimal_add(const std::string &a, const std::string &b) {
     OwnedInt left(a), right(b);
-    BigInt sum{nullptr};
-    if (!bigint_add(&left.value, &right.value, &sum)) throw std::bad_alloc();
-    std::string value(sum.digits);
-    bigint_free(&sum);
-    return value;
+    OwnedResult sum;
+    if (!bigint_add(&left.value, &right.value, &sum.value)) throw std::bad_alloc();
+    return std::string(sum.value.digits);
 }
 
 std::string decimal_multiply(const std::string &a, const std::string &b) {
     OwnedInt left(a), right(b);
-    BigInt product{nullptr};
-    if (!bigint_multiply(&left.value, &right.value, &product)) throw std::bad_alloc();
-    std::string value(product.digits);
-    bigint_free(&product);
-    return value;
+    OwnedResult product;
+    if (!bigint_multiply(&left.value, &right.value, &product.value)) throw std::bad_alloc();
+    return std::string(product.value.digits);
 }
 
 struct Outcome {
