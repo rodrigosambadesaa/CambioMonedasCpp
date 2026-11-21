@@ -146,22 +146,28 @@ struct OwnedArray {
     OwnedArray &operator=(const OwnedArray &) = delete;
 };
 
+/* Scope-bound BigInt ownership also covers exceptions from std::string.
+   Manual bigint_free after constructing the std::string is not exception-safe. */
+struct OwnedResult {
+    BigInt value{};
+    ~OwnedResult() { bigint_free(&value); }
+    OwnedResult(const OwnedResult &) = delete;
+    OwnedResult &operator=(const OwnedResult &) = delete;
+    OwnedResult() = default;
+};
+
 std::string decimal_add(const std::string &a, const std::string &b) {
     OwnedInt left(a), right(b);
-    BigInt sum{nullptr};
-    if (!bigint_add(&left.value, &right.value, &sum)) throw std::bad_alloc();
-    std::string value(sum.digits);
-    bigint_free(&sum);
-    return value;
+    OwnedResult sum;
+    if (!bigint_add(&left.value, &right.value, &sum.value)) throw std::bad_alloc();
+    return std::string(sum.value.digits);
 }
 
 std::string decimal_multiply(const std::string &a, const std::string &b) {
     OwnedInt left(a), right(b);
-    BigInt product{nullptr};
-    if (!bigint_multiply(&left.value, &right.value, &product)) throw std::bad_alloc();
-    std::string value(product.digits);
-    bigint_free(&product);
-    return value;
+    OwnedResult product;
+    if (!bigint_multiply(&left.value, &right.value, &product.value)) throw std::bad_alloc();
+    return std::string(product.value.digits);
 }
 
 struct Outcome {
@@ -332,14 +338,25 @@ DecimalRate parse_decimal_rate(std::string digits) {
 }
 DecimalRate read_stub_rate(const std::string &from, const std::string &to) {
     if (from==to) return {"1","1","1"};
-    std::ifstream input("rates_stub.json");
+    std::ifstream input("rates_stub.json", std::ios::binary);
     if (!input) throw std::runtime_error("No existe rates_stub.json");
-    std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-    if (document.size() > 1024 * 1024) throw std::runtime_error("Archivo de tasas demasiado grande");
+    /* Bound memory BEFORE constructing the document, unlike an unbounded
+       istreambuf_iterator read followed by checking the result's size. */
+    char buffer[16385];
+    input.read(buffer, sizeof(buffer));
+    std::streamsize count = input.gcount();
+    if (count > 16384) throw std::runtime_error("Archivo de tasas demasiado grande");
+    std::string document(buffer, static_cast<std::size_t>(count));
+    const std::regex keyPattern("\"" + from + "_" + to + "\"\\s*:");
+    auto found = std::sregex_iterator(document.begin(), document.end(), keyPattern);
+    if (found == std::sregex_iterator())
+        throw std::runtime_error("No existe tasa para " + from + "_" + to);
+    if (++found != std::sregex_iterator())
+        throw std::runtime_error("Tasa duplicada para " + from + "_" + to);
     const std::regex pattern("\"" + from + "_" + to + "\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)");
     std::smatch matches;
     if (!std::regex_search(document, matches, pattern))
-        throw std::runtime_error("No existe tasa para " + from + "_" + to);
+        throw std::runtime_error("Tasa invalida para " + from + "_" + to);
     return parse_decimal_rate(matches[1].str());
 }
 
@@ -394,7 +411,13 @@ void send_http(HttpSocket client, int code, const std::string &reason,
     std::size_t sent = 0;
     while (sent < response.size()) {
         auto size = static_cast<int>(std::min<std::size_t>(response.size() - sent, 8192));
+        /* A peer can abort between recv and send. MSG_NOSIGNAL prevents
+           a SIGPIPE from terminating the entire Unix server. */
+#ifdef MSG_NOSIGNAL
+        int n = send(client, response.data() + sent, size, MSG_NOSIGNAL);
+#else
         int n = send(client, response.data() + sent, size, 0);
+#endif
         if (n <= 0) break;
         sent += static_cast<std::size_t>(n);
     }
@@ -474,13 +497,25 @@ void handle_http(HttpSocket client) {
 
 int serve_local_http(int port) {
     if (port < 1 || port > 65535) throw std::invalid_argument("Puerto HTTP invalido");
+    /* A finite lifetime enables accurate leak/FD checks under Valgrind.
+       Production remains unlimited when the variable is not set. */
+    std::size_t max_requests = 0;
+    if (const char *limit = std::getenv("PROGVORAZ_HTTP_MAX_REQUESTS")) {
+        if (!nonnegative_size(limit, max_requests) || max_requests == 0)
+            throw std::invalid_argument("Limite HTTP de pruebas invalido");
+    }
 #ifdef _WIN32
     WSADATA winsock{};
     if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0)
         throw std::runtime_error("Winsock no disponible");
 #endif
     HttpSocket listening = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listening == InvalidHttpSocket) throw std::runtime_error("No se puede abrir socket HTTP");
+    if (listening == InvalidHttpSocket) {
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        throw std::runtime_error("No se puede abrir socket HTTP");
+    }
 #ifndef _WIN32
     int reuse = 1;
     setsockopt(listening, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
@@ -492,19 +527,34 @@ int serve_local_http(int port) {
     if (bind(listening, reinterpret_cast<sockaddr*>(&bind_address), sizeof(bind_address)) != 0 ||
         listen(listening, 16) != 0) {
         close_http(listening);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         throw std::runtime_error("No se pudo escuchar en 127.0.0.1");
     }
     std::cout << "Servidor HTTP local 127.0.0.1:" << port << std::endl;
+    std::size_t served = 0;
     for (;;) {
+        if (max_requests && served >= max_requests) break;
         HttpSocket client = accept(listening, nullptr, nullptr);
         if (client == InvalidHttpSocket) continue;
+#ifdef SO_NOSIGPIPE
+        int no_sigpipe = 1;
+        (void)setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
         try { handle_http(client); }
         catch (const std::exception &ex) {
             std::cerr << "HTTP: " << ex.what() << '\n';
             send_http(client, 500, "Internal Server Error", "text/plain", "Internal Error");
         }
         close_http(client);
+        ++served;
     }
+    close_http(listening);
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return 0;
 }
 
 } // namespace

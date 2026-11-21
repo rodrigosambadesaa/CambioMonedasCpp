@@ -67,3 +67,25 @@ jobs:
             echo "Unexpected success for invalid denominations" >&2
             exit 1
           fi
+
+      - name: Compile ownership regression (ASan/LSan/UBSan)
+        run: |
+          g++ -std=c++20 -g -O1 -Wall -Wextra -Wpedantic -I. \
+            -fsanitize=address,leak,undefined -fno-omit-frame-pointer \
+            tests/test_bigint_ownership.cpp bigint.cpp -o test_ownership_sanitized
+
+      - name: Assert BigInt ownership and alias-safe replacement
+        run: ./test_ownership_sanitized
+
+      - name: Check ownership independently under Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+          g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -I. \
+            tests/test_bigint_ownership.cpp bigint.cpp -o test_ownership_valgrind
+          valgrind --leak-check=full --show-leak-kinds=all \
+            --errors-for-leak-kinds=definite,possible \
+            --error-exitcode=99 ./test_ownership_valgrind
+
+      - name: Reject ambiguous and oversized conversion-rate stubs
+        run: python3 tests/test_rate_stub_validation.py ./progvoraz_sanitized
