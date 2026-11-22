@@ -246,10 +246,16 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
             return index < row.size() ? row[index] : fallback;
         };
         std::string mode = lowercase(field(0, "a")), key = currency(field(1, ""));
+        if (mode.empty()) mode = "a";
         std::string amount = field(2, "0");
         if (!numeric(amount)) {
             csv_row(out, {"", "", amount, "ERROR", english ? "invalid amount" : "monto invalido"});
             if (log) *log << "invalid amount at line " << line_number << '\n';
+            continue;
+        }
+        if (mode != "a" && mode != "b" && mode != "c") {
+            csv_row(out, {"", "", amount, "ERROR", english ? "invalid mode" : "modo invalido"});
+            if (log) *log << "invalid mode at line " << line_number << '\n';
             continue;
         }
         if (!valid(key, denoms, stocks)) {
@@ -261,8 +267,13 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
         std::string range = field(3, "");
         if (!range.empty()) {
             size_t dash = range.find('-'), value = 0;
+            bool exact = range[0] == '=';
+            if (exact && dash != std::string::npos) {
+                csv_row(out, {"", key, amount, "ERROR", "rango invalido"});
+                continue;
+            }
             std::string first = range.substr(0, dash);
-            if (!first.empty() && first[0] == '=') first.erase(first.begin());
+            if (exact) first.erase(first.begin());
             if (!nonnegative_size(first, value)) {
                 csv_row(out, {"", key, amount, "ERROR", "rango invalido"});
                 continue;
