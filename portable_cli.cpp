@@ -24,11 +24,11 @@
 #include <cctype>
 #include <deque>
 #include <filesystem>
+#include <system_error>
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <spawn.h>
-#include <system_error>
 extern char **environ;
 #endif
 #include <fstream>
