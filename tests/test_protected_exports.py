@@ -57,6 +57,20 @@ def main():
                                     capture_output=True, text=True, timeout=30)
             assert result.returncode == 0, (flag, result.stdout, result.stderr)
             assert (root / target).is_file() and (root / target).stat().st_size > 0
+        # Replacing a pre-existing ordinary export must publish a complete
+        # new file, rather than appending or leaving the old content.
+        for flag, target in (("--export-stock-json", "safe.json"),
+                             ("--export-report", "safe-report.txt"),
+                             ("--snapshot-stock", "safe-backup.txt")):
+            dest = root / target
+            dest.write_bytes(b"OBSOLETE-EXPORT-CONTENT")
+            result = subprocess.run(command + [flag, target], cwd=root,
+                                    capture_output=True, text=True, timeout=30)
+            assert result.returncode == 0, (flag, result.stdout, result.stderr)
+            assert dest.stat().st_size > 0
+            assert b"OBSOLETE-EXPORT-CONTENT" not in dest.read_bytes()
+        assert not list(root.glob(".progvoraz-export-*")), \
+            "temporary export directories leaked after successful publication"
         print("PASS: operational files preserved for exports/backups and aliases")
 
 if __name__ == "__main__":
