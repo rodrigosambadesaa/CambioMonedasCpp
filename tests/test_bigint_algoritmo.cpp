@@ -443,8 +443,52 @@ static void test_nearest_coprime_bigint_two_denominations(void)
     bigint_array_free(&denom);
 }
 
+static void test_nearest_bigint_two_denominations_stock_large(void)
+{
+    const char *d[]={"50000","29999"};
+    const char *s1[]={"1000","1000"};
+    const char *s2[]={"1","513"};
+    const char *s3[]={"0","513"};
+    const char *expect1[]={"10","0"};
+    const char *expect2[]={"1","15"};
+    const char *expect3[]={"0","16"};
+    BigIntArray denom{},stock{},answer{};
+    BigInt amount{nullptr},covered{nullptr};
+    check_int(crear_arreglo(&denom,d,2),"stock nearest two denom setup");
+    check_int(bigint_init(&amount,"500001"),"stock nearest target");
+
+    check_int(crear_arreglo(&stock,s1,2),"stock nearest 2000 available coins");
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denom,&stock,
+        0,std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "closest with stock>512 and two denominations");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+        "closest with stock>512 covers 500000");
+    check_arreglo_texto(&answer,expect1,2,"nearest large stock minimal count");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_array_free(&stock);
+
+    check_int(crear_arreglo(&stock,s2,2),"stock nearest high capped");
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denom,&stock,
+        0,std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "closest with stock>512 and one high denomination");
+    check_int(covered.digits && std::string(covered.digits)=="499985",
+        "closest high capped covers 499985");
+    check_arreglo_texto(&answer,expect2,2,"nearest high capped minimal count");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_array_free(&stock);
+
+    check_int(crear_arreglo(&stock,s3,2),"stock nearest high exhausted");
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denom,&stock,
+        0,std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "closest with high denomination exhausted");
+    check_int(covered.digits && std::string(covered.digits)=="479984",
+        "closest high exhausted covers 479984");
+    check_arreglo_texto(&answer,expect3,2,"nearest high exhausted counts");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_array_free(&stock);
+    bigint_free(&amount);bigint_array_free(&denom);
+}
+
 int main(void)
 {
+    test_nearest_bigint_two_denominations_stock_large();
     test_nearest_coprime_bigint_two_denominations();
     test_nearest_bigint_two_denominations();
     test_nearest_single_bigint_boundary();
