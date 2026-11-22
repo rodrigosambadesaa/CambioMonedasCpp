@@ -726,11 +726,20 @@ int run_portable_cli(int argc, char **argv) {
                 if(left==right) return true;
                 return fs::equivalent(a,b,error);
             };
-            if((input && outputPath && sameBatchFile(*input,*outputPath)) ||
+            auto touchesProtectedData=[&](const std::optional<std::string> &path) {
+                if(!path) return false;
+                for(const auto &protectedFile: {
+                    "stock.txt", "monedas.txt", "historial.txt", "stock.txt.lock"
+                }) if(sameBatchFile(*path, protectedFile)) return true;
+                return false;
+            };
+            if(touchesProtectedData(outputPath) ||
+               touchesProtectedData(logPath) ||
+               (input && outputPath && sameBatchFile(*input,*outputPath)) ||
                (input && logPath && sameBatchFile(*input,*logPath)) ||
                (outputPath && logPath && sameBatchFile(*outputPath,*logPath)))
                 throw std::invalid_argument(
-                    "Entrada, salida y registro CSV deben ser archivos diferentes.");
+                    "Entrada, salida o registro CSV usan una ruta protegida o compartida.");
             if (input) {
                 in = std::make_unique<std::ifstream>(*input);
                 if (!*in) throw std::runtime_error("No se pudo leer " + *input);
