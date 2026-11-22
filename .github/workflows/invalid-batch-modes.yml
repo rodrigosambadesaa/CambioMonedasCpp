@@ -1,0 +1,17 @@
+name: Reject unknown CSV batch and stream modes
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mode-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build executable
+        run: make debug
+      - name: Test unknown and valid modes in both CSV interfaces
+        run: python3 tests/test_invalid_batch_modes.py
