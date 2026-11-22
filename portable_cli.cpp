@@ -541,6 +541,34 @@ int serve_local_http(int port) {
         HttpSocket client = accept(listening, nullptr, nullptr);
         if (client == InvalidHttpSocket) continue;
         HttpSocketGuard client_guard(client);
+        // A client sending one header byte or an incomplete POST must not
+        // monopolize this sequential listener indefinitely. Time out both
+        // reads and writes; dropped requests still release the RAII socket.
+        const std::size_t timeout_ms = [] {
+            const char *raw = std::getenv("PROGVORAZ_HTTP_IO_TIMEOUT_MS");
+            std::size_t parsed = 0;
+            return raw && nonnegative_size(raw, parsed) && parsed >= 100 &&
+                   parsed <= 60000 ? parsed : static_cast<std::size_t>(15000);
+        }();
+#ifdef _WIN32
+        DWORD io_timeout = static_cast<DWORD>(timeout_ms);
+        int recv_timeout = setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+            reinterpret_cast<const char *>(&io_timeout), sizeof(io_timeout));
+        int send_timeout = setsockopt(client, SOL_SOCKET, SO_SNDTIMEO,
+            reinterpret_cast<const char *>(&io_timeout), sizeof(io_timeout));
+#else
+        timeval io_timeout{};
+        io_timeout.tv_sec = static_cast<decltype(io_timeout.tv_sec)>(timeout_ms / 1000);
+        io_timeout.tv_usec = static_cast<decltype(io_timeout.tv_usec)>((timeout_ms % 1000) * 1000);
+        int recv_timeout = setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+            &io_timeout, sizeof(io_timeout));
+        int send_timeout = setsockopt(client, SOL_SOCKET, SO_SNDTIMEO,
+            &io_timeout, sizeof(io_timeout));
+#endif
+        if (recv_timeout != 0 || send_timeout != 0) {
+            std::cerr << "HTTP: no se pudo establecer timeout de cliente\n";
+            continue;
+        }
 #ifdef SO_NOSIGPIPE
         int no_sigpipe = 1;
         (void)setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
