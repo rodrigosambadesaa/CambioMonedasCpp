@@ -232,6 +232,33 @@ static void test_near_high_amount(void) {
 }
 
 
+static void test_nearest_single_bigint_boundary(void) {
+    const char *coins[]={"500000"};
+    const char *st[]={"2"};
+    BigInt amount{nullptr}, covered{nullptr};
+    BigIntArray denominations{}, stock{}, answer{};
+    check_int(bigint_init(&amount, "500001"), "boundary nearest amount");
+    check_int(crear_arreglo(&denominations,coins,1), "boundary nearest denomination");
+    check_int(crear_arreglo(&stock,st,1), "boundary nearest stock");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denominations,0,1,
+              &covered,&answer), "nearest above C++ DP maximum with coin limit");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+              "nearest returns partial amount");
+    const char *one[]={"1"};
+    check_arreglo_texto(&answer,one,1,"nearest count is bounded");
+    bigint_array_free(&answer);bigint_free(&covered);
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denominations,
+              &stock,1,1,&covered,&answer),"nearest BigInt stock, minimum");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+              "nearest stocked covered");
+    check_arreglo_texto(&answer,one,1,"nearest stocked quantity");
+    bigint_array_free(&answer);bigint_free(&covered);
+    check_int(!calcular_cambio_cercano_stock_con_rango(&amount,&denominations,
+              &stock,3,3,&covered,&answer),"nearest rejects impossible minimum");
+    bigint_array_free(&answer);bigint_free(&covered);
+    bigint_array_free(&stock);bigint_array_free(&denominations);bigint_free(&amount);
+}
+
 static void test_noncanonical_large_residue(void) {
     const char *denominations[]={"4","3","1"};
     BigIntArray values{},answer{};
@@ -361,6 +388,7 @@ static void test_sparse_large_inventory(void) {
 
 int main(void)
 {
+    test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();
     test_more_than_size_t_max_coins();
     test_bigint_two_denominations();
