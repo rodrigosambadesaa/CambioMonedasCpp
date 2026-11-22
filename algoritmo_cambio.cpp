@@ -620,6 +620,44 @@ int solve_near_single_pass(const BigInt *amount, const BigIntArray *denom,
     return 0;
 }
 
+// Exact closest change for a single denomination, independently of amount
+// size. Unlike the small-DP path, this does not need O(amount) allocations.
+int solve_near_single_big(const BigInt *amount, const BigIntArray *denom,
+                          const BigIntArray *stock, std::size_t min_coins,
+                          std::size_t max_coins, BigInt *covered,
+                          BigIntArray *result) {
+    if (!amount || !denom || !denom->items || denom->len != 1 ||
+        !denom->items[0].digits || bigint_is_zero(&denom->items[0]) ||
+        !covered || !result ||
+        (stock && (!stock->items || stock->len != 1))) return 0;
+
+    BigInt count{nullptr}, remainder{nullptr}, min_value{nullptr};
+    BigInt upper{nullptr}, paid{nullptr};
+    bool ok = bigint_divmod(amount, &denom->items[0], &count, &remainder);
+    if (ok && stock && bigint_compare(&count, &stock->items[0]) > 0)
+        ok = bigint_set(&count, &stock->items[0]);
+    if (ok && max_coins != std::numeric_limits<std::size_t>::max()) {
+        ok = bigint_init(&upper, std::to_string(max_coins).c_str());
+        if (ok && bigint_compare(&count, &upper) > 0)
+            ok = bigint_set(&count, &upper);
+    }
+    if (ok) ok = bigint_init(&min_value, std::to_string(min_coins).c_str()) &&
+                 !bigint_is_zero(&count) &&
+                 bigint_compare(&count, &min_value) >= 0 &&
+                 bigint_multiply(&count, &denom->items[0], &paid);
+    if (ok) {
+        ok = bigint_array_create(result, 1);
+        if (ok) {
+            ok = bigint_array_set(result, 0, &count) &&
+                 bigint_set(covered, &paid);
+            if (!ok) bigint_array_free(result);
+        }
+    }
+    bigint_free(&count); bigint_free(&remainder);
+    bigint_free(&min_value); bigint_free(&upper); bigint_free(&paid);
+    return ok ? 1 : 0;
+}
+
 template <typename Solver>
 int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solver solver) {
     std::size_t requested = 0;
@@ -642,10 +680,14 @@ int calcular_cambio_optimo_stock_con_rango(const BigInt *m, const BigIntArray *d
 int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t hi, BigIntArray *s) { return solve(m, d, st, 0, hi, s); }
 
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (d && d->len == 1)
+        return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
 int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (d && d->len == 1)
+        return solve_near_single_big(m,d,st,lo,hi,covered,s);
     std::size_t small=0;
     if (!to_size(m,kMaxAmount,&small)) {
         int sparse=solve_large_sparse(m,d,st,lo,hi,s,covered);
