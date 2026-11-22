@@ -1,0 +1,26 @@
+name: C++ batch data-loss regression
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile with ASan UBSan
+        run: |
+          g++ -std=c++20 -Wall -Wextra -Wpedantic -O1 -g \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            main.cpp app_console.cpp portable_cli.cpp gui_launcher.cpp csv_io.cpp \
+            json_io.cpp exchange_api.cpp moneda_gestion.cpp bigint.cpp \
+            vector_dinamico.cpp algoritmo_cambio.cpp \
+            -o /tmp/progvoraz-batch-safety-cpp
+      - name: Protect data from file aliases
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+        run: python3 tests/test_batch_path_collision.py --native /tmp/progvoraz-batch-safety-cpp

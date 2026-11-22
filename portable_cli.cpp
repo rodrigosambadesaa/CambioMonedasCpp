@@ -811,11 +811,42 @@ int run_portable_cli(int argc, char **argv) {
         if (input || has(args, "--stream") || has(args, "--docker")) {
             std::unique_ptr<std::ifstream> in;
             std::unique_ptr<std::ofstream> out, log;
+            auto outputPath=flag_value(args,"--output");
+            auto logPath=flag_value(args,"--log");
+            auto sameBatchFile=[](const std::string &a,const std::string &b) {
+                std::error_code error;
+                auto left=fs::absolute(a,error).lexically_normal();
+                if(error) return false;
+                auto right=fs::absolute(b,error).lexically_normal();
+                if(error) return false;
+                if(left==right) return true;
+                return fs::equivalent(a,b,error);
+            };
+            auto touchesProtectedData=[&](const std::optional<std::string> &path) {
+                if(!path) return false;
+                for(const auto &protectedFile: {
+                    "stock.txt", "monedas.txt", "historial.txt", "stock.txt.lock"
+                }) if(sameBatchFile(*path, protectedFile)) return true;
+                return false;
+            };
+            if(touchesProtectedData(outputPath) ||
+               touchesProtectedData(logPath) ||
+               (input && outputPath && sameBatchFile(*input,*outputPath)) ||
+               (input && logPath && sameBatchFile(*input,*logPath)) ||
+               (outputPath && logPath && sameBatchFile(*outputPath,*logPath)))
+                throw std::invalid_argument(
+                    "Entrada, salida o registro CSV usan una ruta protegida o compartida.");
             if (input) {
                 in = std::make_unique<std::ifstream>(*input);
                 if (!*in) throw std::runtime_error("No se pudo leer " + *input);
             }
             if (auto path = flag_value(args, "--output")) {
+                if (input) {
+                    std::error_code error;
+                    if (fs::equivalent(*input, *path, error))
+                        throw std::invalid_argument(
+                            "Entrada y salida CSV apuntan al mismo archivo; no se sobrescribe.");
+                }
                 out = std::make_unique<std::ofstream>(*path);
                 if (!*out) throw std::runtime_error("No se pudo escribir " + *path);
             }
