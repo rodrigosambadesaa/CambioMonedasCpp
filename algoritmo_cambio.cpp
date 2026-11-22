@@ -512,6 +512,15 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
           std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
     std::size_t requested = 0;
     if (!amount || !denom || !result) return 0;
+    // For two denominations, a positive lower coin bound may require a
+    // mathematically valid but non-minimal solution. Ordinary O(amount) DP
+    // stores only the global optimum, and the fallback state search rejects
+    // amounts >20,000. Solve the exact Diophantine interval instead.
+    if (denom->len == 2 && min_coins > 0) {
+        int exact = solve_large_two(amount, denom, stock, min_coins,
+                                    max_coins, result);
+        if (exact >= 0) return exact;
+    }
     if (!to_size(amount, kMaxAmount, &requested)) {
         if (stock) {
             int sparse=solve_large_sparse(amount,denom,stock,min_coins,max_coins,result);
