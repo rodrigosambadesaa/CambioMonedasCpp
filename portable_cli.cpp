@@ -505,9 +505,12 @@ int recv_http_deadline(HttpSocket client, char *buffer, int capacity,
     }
 }
 
-void handle_http(HttpSocket client) {
+void handle_http(HttpSocket client, std::size_t io_timeout_ms) {
+    // The absolute request deadline and the socket's configurable inactivity
+    // deadline are complementary. Use the shorter for select(), otherwise
+    // a stalled peer would wait the full 8 s despite SO_RCVTIMEO=750 ms.
     const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(8);
+        std::chrono::milliseconds(std::min<std::size_t>(8000, io_timeout_ms));
     constexpr std::size_t kMaxBody = 1024 * 1024;
     constexpr std::size_t kMaxHeaders = 32768;
     std::string request;
@@ -650,7 +653,7 @@ int serve_local_http(int port) {
         int no_sigpipe = 1;
         (void)setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
 #endif
-        try { handle_http(client); }
+        try { handle_http(client, timeout_ms); }
         catch (const std::exception &ex) {
             std::cerr << "HTTP: " << ex.what() << '\n';
             try { send_http(client, 500, "Internal Server Error", "text/plain", "Internal Error"); }
