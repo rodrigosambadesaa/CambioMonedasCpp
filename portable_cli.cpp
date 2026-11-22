@@ -480,14 +480,20 @@ void send_http(HttpSocket client, int code, const std::string &reason,
 // A total, monotonic request deadline prevents a client sending one byte
 // periodically from keeping this single-thread HTTP server busy forever.
 int recv_http_deadline(HttpSocket client, char *buffer, int capacity,
-                       std::chrono::steady_clock::time_point deadline) {
+                       std::chrono::steady_clock::time_point deadline,
+                       std::size_t idle_timeout_ms) {
     for (;;) {
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
             deadline - std::chrono::steady_clock::now()).count();
         if (remaining <= 0) return -1;
+        // SO_RCVTIMEO alone does not bound the preceding select() call.
+        // Reset this per-read idle interval after each successful chunk,
+        // while preserving the independent 8-second total request deadline.
+        auto wait_ms = std::min(remaining,
+            static_cast<decltype(remaining)>(idle_timeout_ms));
         timeval timeout{};
-        timeout.tv_sec = static_cast<long>(remaining / 1000);
-        timeout.tv_usec = static_cast<long>((remaining % 1000) * 1000);
+        timeout.tv_sec = static_cast<long>(wait_ms / 1000);
+        timeout.tv_usec = static_cast<long>((wait_ms % 1000) * 1000);
 #ifndef _WIN32
         if (client >= FD_SETSIZE) return -1;
 #endif
@@ -506,11 +512,10 @@ int recv_http_deadline(HttpSocket client, char *buffer, int capacity,
 }
 
 void handle_http(HttpSocket client, std::size_t io_timeout_ms) {
-    // The absolute request deadline and the socket's configurable inactivity
-    // deadline are complementary. Use the shorter for select(), otherwise
-    // a stalled peer would wait the full 8 s despite SO_RCVTIMEO=750 ms.
+    // Total request deadline = 8 seconds; each individual recv has its own
+    // configurable idle deadline (e.g. 750 ms in integration tests).
     const auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(std::min<std::size_t>(8000, io_timeout_ms));
+                          std::chrono::seconds(8);
     constexpr std::size_t kMaxBody = 1024 * 1024;
     constexpr std::size_t kMaxHeaders = 32768;
     std::string request;
@@ -522,7 +527,7 @@ void handle_http(HttpSocket client, std::size_t io_timeout_ms) {
             return;
         }
         int n = recv_http_deadline(client, buffer,
-                                   static_cast<int>(sizeof(buffer)), deadline);
+                                   static_cast<int>(sizeof(buffer)), deadline, io_timeout_ms);
         if (n <= 0) return;
         request.append(buffer, static_cast<std::size_t>(n));
     }
@@ -558,7 +563,7 @@ void handle_http(HttpSocket client, std::size_t io_timeout_ms) {
         std::size_t start = header_end + 4;
         while (request.size() < start + *content_length) {
             int n = recv_http_deadline(client, buffer,
-                                   static_cast<int>(sizeof(buffer)), deadline);
+                                   static_cast<int>(sizeof(buffer)), deadline, io_timeout_ms);
             if (n <= 0) return;
             request.append(buffer, static_cast<std::size_t>(n));
         }
