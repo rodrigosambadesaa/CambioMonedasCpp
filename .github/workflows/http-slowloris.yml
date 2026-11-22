@@ -1,0 +1,17 @@
+name: C++ HTTP stalled-request deadline
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  slowloris:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile HTTP server
+        run: make debug
+      - name: Assert stalled HTTP clients cannot starve other requests
+        run: python3 tests/test_http_slowloris.py
