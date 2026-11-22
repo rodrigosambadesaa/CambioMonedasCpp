@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="progvoraz-http-deadline-") as folder:
         sock.bind(("127.0.0.1",0))
         port=sock.getsockname()[1]
     env=os.environ.copy()
-    env["PROGVORAZ_HTTP_MAX_REQUESTS"]="5"
+    env["PROGVORAZ_HTTP_MAX_REQUESTS"]="7"
     env["PROGVORAZ_HTTP_IO_TIMEOUT_MS"]="750"
     env["ASAN_OPTIONS"]="detect_leaks=1:halt_on_error=1:abort_on_error=1"
     process=subprocess.Popen([str(executable),"--server","--port",str(port)],
@@ -53,6 +53,30 @@ with tempfile.TemporaryDirectory(prefix="progvoraz-http-deadline-") as folder:
             start=time.monotonic()
             assert health()==(200,b"OK"),"listener stuck on incomplete POST"
             assert time.monotonic()-start<3.5,"body timeout exceeded deadline"
+        # A legitimate client can take MORE than 750 ms to send a body,
+        # provided that every interval between chunks stays under 750 ms.
+        # This distinguishes an idle timeout from an accidental total timeout.
+        with socket.create_connection(("127.0.0.1",port),timeout=4) as active:
+            active.settimeout(4)
+            body=b"mode,currency,amount,range\\na,euro,6,\\n"
+            headers=(b"POST /batch HTTP/1.1\\r\\nHost: localhost\\r\\n"
+                     b"Content-Length: "+str(len(body)).encode()+
+                     b"\\r\\nConnection: close\\r\\n\\r\\n")
+            active.sendall(headers)
+            started=time.monotonic()
+            for offset in range(0,len(body),12):
+                active.sendall(body[offset:offset+12])
+                if offset+12<len(body):
+                    time.sleep(.30)
+            assert time.monotonic()-started>.75, \
+                "the test did not exceed the configured idle interval in total"
+            response=b""
+            while True:
+                chunk=active.recv(8192)
+                if not chunk:break
+                response+=chunk
+            assert response.startswith(b"HTTP/1.1 200"), response[:300]
+        assert health()==(200,b"OK"), "listener failed after active slow upload"
         output,_=process.communicate(timeout=12)
         assert process.returncode==0,(process.returncode,output.decode(errors="replace")[-2500:])
     finally:
