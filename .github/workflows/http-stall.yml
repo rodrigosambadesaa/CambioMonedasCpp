@@ -1,0 +1,28 @@
+name: C++ HTTP stalled-client resilience
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile HTTP server with sanitizers
+        run: |
+          g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            main.cpp app_console.cpp portable_cli.cpp gui_launcher.cpp \
+            csv_io.cpp json_io.cpp exchange_api.cpp moneda_gestion.cpp bigint.cpp \
+            vector_dinamico.cpp algoritmo_cambio.cpp \
+            -fsanitize=address,undefined -o /tmp/progvoraz-stall-cpp
+      - name: Verify stalled HTTP request cannot starve a healthy client
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+        run: python tests/test_http_stall.py /tmp/progvoraz-stall-cpp
