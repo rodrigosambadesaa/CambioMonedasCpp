@@ -732,6 +732,13 @@ int solve_near_common_unit(const BigInt *amount, const BigIntArray *denom,
     ScaledChange scaled;
     if (!scale_common_unit(amount, denom, &scaled))
         return -1;
+    // The DP-based nearest solver only supports amounts <=500,000.
+    // An oversized *normalized* amount is unsupported, not proof that
+    // no smaller representable sum exists. The outer caller may have
+    // an exact large-BigInt route (for example two denominations).
+    std::size_t normalizedAmount = 0;
+    if (!to_size(&scaled.amount, kMaxAmount, &normalizedAmount))
+        return -1;
     BigInt scaledCovered{nullptr};
     int ok = lo == 0
         ? solve_near_single_pass(&scaled.amount, &scaled.denominations, stock,
