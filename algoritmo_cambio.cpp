@@ -679,13 +679,49 @@ int calcular_cambio_optimo_con_limite(const BigInt *m, const BigIntArray *d, std
 int calcular_cambio_optimo_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigIntArray *s) { return solve(m, d, st, lo, hi, s); }
 int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t hi, BigIntArray *s) { return solve(m, d, st, 0, hi, s); }
 
+// Exact O(n) closest-change solver for a maximum of ONE coin, even when
+// the requested amount is an arbitrary-precision BigInt beyond the DP bound.
+int solve_near_any_one_coin(const BigInt *amount, const BigIntArray *denom,
+                            const BigIntArray *stock, BigInt *covered,
+                            BigIntArray *result) {
+    if (!amount || !amount->digits || !denom || !denom->items ||
+        !denom->len || !covered || !result ||
+        (stock && (!stock->items || stock->len != denom->len)))
+        return 0;
+    std::size_t best = denom->len;
+    for (std::size_t i = 0; i < denom->len; ++i) {
+        if (!denom->items[i].digits || bigint_is_zero(&denom->items[i]) ||
+            (stock && (!stock->items[i].digits ||
+                       bigint_is_zero(&stock->items[i]))) ||
+            bigint_compare(&denom->items[i], amount) > 0)
+            continue;
+        if (best == denom->len ||
+            bigint_compare(&denom->items[i], &denom->items[best]) > 0)
+            best = i;
+    }
+    if (best == denom->len || !bigint_array_create(result, denom->len))
+        return 0;
+    BigInt zero{nullptr}, one{nullptr};
+    bool ok = bigint_init(&zero, "0") && bigint_init(&one, "1");
+    for (std::size_t i = 0; i < denom->len && ok; ++i)
+        ok = bigint_array_set(result, i, i == best ? &one : &zero);
+    if (ok) ok = bigint_set(covered, &denom->items[best]);
+    bigint_free(&zero); bigint_free(&one);
+    if (!ok) bigint_array_free(result);
+    return ok ? 1 : 0;
+}
+
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (lo <= 1 && hi == 1)
+        return solve_near_any_one_coin(m,d,nullptr,covered,s);
     if (d && d->len == 1)
         return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
 int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *d, const BigIntArray *st, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
+    if (lo <= 1 && hi == 1)
+        return solve_near_any_one_coin(m,d,st,covered,s);
     if (d && d->len == 1)
         return solve_near_single_big(m,d,st,lo,hi,covered,s);
     std::size_t small=0;
