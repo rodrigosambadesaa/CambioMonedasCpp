@@ -265,6 +265,56 @@ bool safe_export_destination(const std::string &path) {
     return true;
 }
 
+// Write exports in a private temporary directory on the SAME filesystem
+// and publish only a complete file. A directory created with mkdir/CreateDirectory
+// cannot accidentally be an existing symlink, even with an untrusted parent.
+// rename() replaces the destination directory entry rather than following a
+// symlink/hardlink to operational stock data. No partial final files on errors.
+template<class Writer>
+void publish_export_atomically(const std::string &destination, Writer writer)
+{
+    if (!safe_export_destination(destination))
+        throw std::invalid_argument("Destino reservado para datos operativos");
+    const fs::path target = fs::absolute(destination).lexically_normal();
+    const fs::path parent = target.parent_path();
+    fs::path privateDir;
+    bool created = false;
+    for (int attempt=0;attempt<32;++attempt) {
+        const auto nonce = std::chrono::steady_clock::now()
+            .time_since_epoch().count();
+        privateDir = parent / (".progvoraz-export-" +
+                     std::to_string(nonce) + "-" + std::to_string(attempt));
+        std::error_code ec;
+        if (fs::create_directory(privateDir, ec)) {created=true;break;}
+        if (ec && ec != std::errc::file_exists)
+            throw fs::filesystem_error("No se pudo crear temporal de exportacion",
+                                       privateDir, ec);
+    }
+    if (!created)
+        throw std::runtime_error("No se pudo crear un temporal unico de exportacion");
+    const fs::path staged = privateDir / "content";
+    try {
+        writer(staged);
+        if (!safe_export_destination(destination))
+            throw std::invalid_argument("El destino cambió a una ruta reservada");
+#ifdef _WIN32
+        if (!MoveFileExW(staged.c_str(), target.c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            throw std::system_error(static_cast<int>(GetLastError()),
+                                    std::system_category(),
+                                    "No se pudo publicar la exportacion");
+#else
+        fs::rename(staged,target);
+#endif
+    } catch (...) {
+        std::error_code ignored;
+        fs::remove_all(privateDir, ignored);
+        throw;
+    }
+    std::error_code ignored;
+    fs::remove_all(privateDir,ignored);
+}
+
 void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
                    bool english, const Blocks &denoms, const Blocks &stocks) {
     csv_row(out, english ? std::vector<std::string>{"mode","currency","amount","result","note"}
@@ -711,7 +761,9 @@ int run_portable_cli(int argc, char **argv) {
             auto path = flag_value(args, "--snapshot-stock");
             if (!path || !safe_export_destination(*path))
                 throw std::invalid_argument("Destino del snapshot reservado para datos operativos");
-            fs::copy_file("stock.txt", *path, fs::copy_options::overwrite_existing);
+            publish_export_atomically(*path, [&](const fs::path &stage) {
+                fs::copy_file("stock.txt",stage);
+            });
             return 0;
         }
 
@@ -755,13 +807,19 @@ int run_portable_cli(int argc, char **argv) {
             auto json = flag_value(args, "--export-stock-json");
             auto report = flag_value(args, "--export-report");
             std::string path = json.value_or(report.value_or(""));
-            if (!safe_export_destination(path))
-                throw std::invalid_argument("Destino de exportacion reservado para datos operativos");
-            std::ofstream out(path);
-            if (!out) throw std::runtime_error("No se pudo abrir " + path);
-            if (json) export_stock_json_cpp(out, denoms, stocks, [&](const std::string &key) { return valid(key, denoms, stocks); });
-            else export_report(out, denoms, stocks);
-            if (!out) throw std::runtime_error("Error escribiendo " + path);
+            publish_export_atomically(path, [&](const fs::path &stage) {
+                std::ofstream out(stage, std::ios::binary | std::ios::trunc);
+                if (!out) throw std::runtime_error("No se pudo abrir temporal para " + path);
+                if (json)
+                    export_stock_json_cpp(out, denoms, stocks,
+                        [&](const std::string &key) { return valid(key, denoms, stocks); });
+                else
+                    export_report(out, denoms, stocks);
+                out.flush();
+                if (!out) throw std::runtime_error("Error escribiendo " + path);
+                out.close();
+                if (!out) throw std::runtime_error("Error cerrando " + path);
+            });
             return 0;
         }
 
