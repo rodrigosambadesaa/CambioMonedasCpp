@@ -259,6 +259,33 @@ static void test_nearest_single_bigint_boundary(void) {
     bigint_array_free(&stock);bigint_array_free(&denominations);bigint_free(&amount);
 }
 
+static void test_nearest_large_two_unlimited(void) {
+    const char *coins[]={"50000","30000"};
+    BigInt amount{nullptr},covered{nullptr};
+    BigIntArray d{}, result{};
+    check_int(crear_arreglo(&d,coins,2),"nearest two denoms");
+    check_int(bigint_init(&amount,"500001"),"nearest two amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&d,0,
+              std::numeric_limits<std::size_t>::max(),&covered,&result),
+              "nearest two BigInt succeeds above DP ceiling");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+              "nearest two covers maximum representable amount");
+    const char *expected[]={"10","0"};
+    check_arreglo_texto(&result,expected,2,
+                        "nearest two selects minimal pieces");
+    bigint_array_free(&result);bigint_free(&covered);bigint_free(&amount);
+    check_int(bigint_init(&amount,"100000000000000000000000000000000000001"),
+              "astronomical nearest two amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&d,0,
+              std::numeric_limits<std::size_t>::max(),&covered,&result),
+              "astronomical nearest two BigInt");
+    check_int(covered.digits && std::string(covered.digits) ==
+              "100000000000000000000000000000000000000",
+              "astronomical nearest two coverage");
+    bigint_array_free(&result);bigint_free(&covered);bigint_free(&amount);
+    bigint_array_free(&d);
+}
+
 static void test_noncanonical_large_residue(void) {
     const char *denominations[]={"4","3","1"};
     BigIntArray values{},answer{};
@@ -388,6 +415,7 @@ static void test_sparse_large_inventory(void) {
 
 int main(void)
 {
+    test_nearest_large_two_unlimited();
     test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();
     test_more_than_size_t_max_coins();
