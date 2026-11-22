@@ -415,8 +415,37 @@ static void test_nearest_bigint_two_denominations(void)
     bigint_array_free(&denom);
 }
 
+static void test_nearest_coprime_bigint_two_denominations(void)
+{
+    const char *d[]={"50000","29999"};
+    BigIntArray denom{},answer{};
+    BigInt amount{nullptr},covered{nullptr};
+    check_int(crear_arreglo(&denom,d,2),"coprime nearest BigInt setup");
+    check_int(bigint_init(&amount,"500001"),"coprime amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,0,
+        std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "coprime nearest above 500000");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+        "coprime nearest coverage");
+    const char *simple[]={"10","0"};
+    check_arreglo_texto(&answer,simple,2,"coprime nearest fewest coins");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_free(&amount);
+
+    check_int(bigint_init(&amount,"610001"),"coprime mixed amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,0,
+        std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "coprime mixed closest");
+    check_int(covered.digits && std::string(covered.digits)=="609998",
+        "coprime mixed maximizes coverage");
+    const char *mixed[]={"11","2"};
+    check_arreglo_texto(&answer,mixed,2,"coprime mixed exact count");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_free(&amount);
+    bigint_array_free(&denom);
+}
+
 int main(void)
 {
+    test_nearest_coprime_bigint_two_denominations();
     test_nearest_bigint_two_denominations();
     test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();
