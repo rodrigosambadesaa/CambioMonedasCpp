@@ -324,6 +324,32 @@ static void test_bigint_two_denominations(void) {
     bigint_array_free(&values);bigint_free(&amount);
 }
 
+static void test_medium_exact_two_nonminimal_range(void) {
+    const char *denoms[]={"20000","10000"};
+    const char *inventory[]={"1","2"};
+    const char *expected[]={"1","2"};
+    BigInt amount{nullptr};
+    BigIntArray denominations{}, stock{}, result{};
+    check_int(bigint_init(&amount,"40000"),"medium positive minimum amount");
+    check_int(crear_arreglo(&denominations,denoms,2),"medium denominations");
+    check_int(crear_arreglo(&stock,inventory,2),"medium bounded stock");
+    check_int(calcular_cambio_optimo_con_rango(&amount,&denominations,3,3,&result),
+              "medium nonminimal exact with three pieces");
+    check_arreglo_texto(&result,expected,2,
+                         "medium exact range chooses one large two small");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_stock_con_rango(&amount,&denominations,
+              &stock,3,3,&result),"medium nonminimal stocked exact");
+    check_arreglo_texto(&result,expected,2,
+                         "medium stocked exact respects inventory");
+    bigint_array_free(&result);
+    check_int(!calcular_cambio_optimo_stock_con_rango(&amount,&denominations,
+               &stock,4,4,&result),"stocked exact impossible four-piece range");
+    bigint_array_free(&result);
+    bigint_array_free(&stock);bigint_array_free(&denominations);
+    bigint_free(&amount);
+}
+
 static void test_more_than_size_t_max_coins(void) {
     const char *d[]={"75001"}, *single[]={"999999999999999999999999999999999999999999999999"};
     BigIntArray denom{},stock{},solution{};
@@ -388,6 +414,7 @@ static void test_sparse_large_inventory(void) {
 
 int main(void)
 {
+    test_medium_exact_two_nonminimal_range();
     test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();
     test_more_than_size_t_max_coins();
