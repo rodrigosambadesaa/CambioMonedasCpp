@@ -247,6 +247,13 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
         };
         std::string mode = lowercase(field(0, "a")), key = currency(field(1, ""));
         std::string amount = field(2, "0");
+        if (mode.empty()) mode = "a"; // Empty mode historically defaults to unlimited.
+        if (mode != "a" && mode != "b" && mode != "c") {
+            csv_row(out, {"", "", amount, "ERROR",
+                          english ? "invalid mode" : "modo invalido"});
+            if (log) *log << "invalid mode at line " << line_number << '\n';
+            continue;
+        }
         if (!numeric(amount)) {
             csv_row(out, {"", "", amount, "ERROR", english ? "invalid amount" : "monto invalido"});
             if (log) *log << "invalid amount at line " << line_number << '\n';
