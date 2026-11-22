@@ -58,10 +58,10 @@ with tempfile.TemporaryDirectory(prefix="progvoraz-http-deadline-") as folder:
         # This distinguishes an idle timeout from an accidental total timeout.
         with socket.create_connection(("127.0.0.1",port),timeout=4) as active:
             active.settimeout(4)
-            body=b"mode,currency,amount,range\\na,euro,6,\\n"
-            headers=(b"POST /batch HTTP/1.1\\r\\nHost: localhost\\r\\n"
+            body=b"mode,currency,amount,range\na,euro,6,\n"
+            headers=(b"POST /batch HTTP/1.1\r\nHost: localhost\r\n"
                      b"Content-Length: "+str(len(body)).encode()+
-                     b"\\r\\nConnection: close\\r\\n\\r\\n")
+                     b"\r\nConnection: close\r\n\r\n")
             active.sendall(headers)
             started=time.monotonic()
             for offset in range(0,len(body),12):
