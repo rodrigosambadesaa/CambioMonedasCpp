@@ -512,8 +512,17 @@ int solve_large(const BigInt *amount, const BigIntArray *denom, const BigIntArra
         !bigint_array_create(result, denom->len)) {
         bigint_free(&remaining); bigint_free(&count); return 0;
     }
+    // The user-visible order of denominations is arbitrary. Greedy fallback
+    // must process larger values first, but store counts in original order.
+    std::vector<std::size_t> descending(denom->len);
+    std::iota(descending.begin(),descending.end(),std::size_t(0));
+    std::stable_sort(descending.begin(),descending.end(),
+        [&](std::size_t a,std::size_t b) {
+            return bigint_compare(&denom->items[a],&denom->items[b])>0;
+        });
     bool ok = true;
-    for (std::size_t i = 0; i < denom->len && ok; ++i) {
+    for (std::size_t i : descending) {
+        if (!ok) break;
         BigInt q{nullptr}, r{nullptr}, product{nullptr}, next{nullptr}, sum{nullptr};
         ok = !bigint_is_zero(&denom->items[i]) && bigint_divmod(&remaining, &denom->items[i], &q, &r);
         if (ok && stock && bigint_compare(&q, &stock->items[i]) > 0) {
