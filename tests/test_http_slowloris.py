@@ -35,7 +35,7 @@ def stalled_client(port, request):
 
 with tempfile.TemporaryDirectory(prefix="cpp-http-deadline-") as dirname:
     work = Path(dirname)
-    for name in ("monedas.txt", "stock.txt", "rates_stub.json", "VERSIONES.md"):
+    for name in ("monedas.txt", "stock.txt", "rates_stub.json"):
         shutil.copy2(ROOT/name, work/name)
     port = free_port()
     env = os.environ.copy()
