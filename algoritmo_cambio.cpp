@@ -658,6 +658,62 @@ int solve_near_single_big(const BigInt *amount, const BigIntArray *denom,
     return ok ? 1 : 0;
 }
 
+/*
+ * Exact closest change with two small denominations and unlimited inventory.
+ * For every residue class of the larger denomination's coin count modulo
+ * b/gcd(a,b), find the smallest non-negative gap from the requested amount.
+ * The least gap gives the largest payable amount; solve_large_two() then
+ * obtains the minimum coin count for that amount with arbitrary-size BigInt.
+ * Time O(b/gcd), bounded by 50,000, regardless of the amount's digit count.
+ */
+int solve_large_nearest_two_unlimited(const BigInt *amount,
+                                     const BigIntArray *denom,
+                                     BigInt *covered, BigIntArray *result) {
+    if (!amount || !denom || !denom->items || denom->len != 2 ||
+        !covered || !result) return -1;
+    std::size_t d0=0, d1=0;
+    if (!to_size(&denom->items[0], 50000, &d0) ||
+        !to_size(&denom->items[1], 50000, &d1) ||
+        d0 == 0 || d1 == 0 || d0 == d1) return -1;
+    const std::size_t high = std::max(d0,d1), low = std::min(d0,d1);
+    const std::size_t period = low / std::gcd(high,low);
+    ManagedBig divisor(std::to_string(low)), quotient, remainder;
+    if (!bigint_divmod(amount, &divisor.number,
+                       &quotient.number, &remainder.number)) return -1;
+    std::size_t mod=0;
+    if (!to_size(&remainder.number, low-1, &mod)) return -1;
+
+    // Values above this threshold cannot be too small for any of the
+    // period representatives and their residues.
+    const std::size_t cutoff = high * (period-1) + low;
+    std::size_t small=0;
+    const bool amount_is_small = to_size(amount, cutoff, &small);
+    std::size_t best_gap = low;
+    for (std::size_t x=0; x<period; ++x) {
+        const std::size_t gap =
+            (mod + low - ((high * x) % low)) % low;
+        if (gap >= best_gap) continue;
+        if (amount_is_small && small < high*x + gap) continue;
+        if (amount_is_small && small == gap) continue; // no zero change
+        best_gap = gap;
+        if (!gap) break;
+    }
+    if (best_gap == low) return 0; // no positive representable sum
+
+    ManagedBig subtract(std::to_string(best_gap)), candidate;
+    if (!bigint_subtract(amount, &subtract.number, &candidate.number))
+        return -1;
+    int found=solve_large_two(&candidate.number, denom, nullptr, 0,
+                              std::numeric_limits<std::size_t>::max(),
+                              result);
+    if (found != 1) return found;
+    if (!bigint_set(covered, &candidate.number)) {
+        bigint_array_free(result);
+        return 0;
+    }
+    return 1;
+}
+
 template <typename Solver>
 int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solver solver) {
     std::size_t requested = 0;
@@ -682,6 +738,14 @@ int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
     if (d && d->len == 1)
         return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
+    if (d && d->len == 2 && lo == 0 &&
+        hi == std::numeric_limits<std::size_t>::max()) {
+        std::size_t small_amount=0;
+        if (!to_size(m,kMaxAmount,&small_amount)) {
+            int exact=solve_large_nearest_two_unlimited(m,d,covered,s);
+            if (exact>=0) return exact;
+        }
+    }
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
