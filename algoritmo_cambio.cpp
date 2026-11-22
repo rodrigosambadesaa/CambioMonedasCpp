@@ -605,7 +605,7 @@ int solve_nearest_large_two_stock(const BigInt *amount,const BigIntArray *denom,
     const std::size_t periodSize=values[high]/std::gcd(values[high],values[low]);
     ManagedBig highCoin(std::to_string(values[high])),
                lowCoin(std::to_string(values[low])),
-               period(std::to_string(periodSize)),one("1"),zero("0");
+               period(std::to_string(periodSize)),one("1");
     ManagedBig quotient,unused,maxY,maxHighValue,capDelta,saturated;
     if (!bigint_divmod(amount,&lowCoin.number,&quotient.number,&unused.number) ||
         !bigint_set(&maxY.number,
