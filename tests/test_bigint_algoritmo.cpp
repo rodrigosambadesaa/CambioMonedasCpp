@@ -386,8 +386,38 @@ static void test_sparse_large_inventory(void) {
     bigint_array_free(&denominations);bigint_free(&amount);
 }
 
+static void test_nearest_bigint_two_denominations(void)
+{
+    const char *d[]={"50000","30000"};
+    BigIntArray denom{},answer{};
+    BigInt amount{nullptr},covered{nullptr};
+    check_int(crear_arreglo(&denom,d,2),"nearest 2-coin setup");
+
+    check_int(bigint_init(&amount,"500001"),"nearest 2-coin amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,0,
+        std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "closest BigInt two-coin solution above DP limit");
+    check_int(covered.digits && std::string(covered.digits)=="500000",
+        "two-coin closest coverage");
+    const char *expected[]={"10","0"};
+    check_arreglo_texto(&answer,expected,2,"two-coin nearest optimum");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_free(&amount);
+
+    check_int(bigint_init(&amount,"610001"),"near two-coin mixed amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,0,
+        std::numeric_limits<std::size_t>::max(),&covered,&answer),
+        "mixed nearest BigInt two denominations");
+    check_int(covered.digits && std::string(covered.digits)=="610000",
+        "mixed nearest BigInt coverage");
+    const char *mixed[]={"11","2"};
+    check_arreglo_texto(&answer,mixed,2,"mixed nearest BigInt optimum");
+    bigint_array_free(&answer);bigint_free(&covered);bigint_free(&amount);
+    bigint_array_free(&denom);
+}
+
 int main(void)
 {
+    test_nearest_bigint_two_denominations();
     test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();
     test_more_than_size_t_max_coins();

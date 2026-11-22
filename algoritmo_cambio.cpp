@@ -546,6 +546,45 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
 }
 
 
+// A single largest denomination proves that an amount in
+// [floor(amount/largest)*largest, amount] can be paid. For two unlimited
+// denominations <=50000, test at most largest/gcd descending candidates,
+// each with the exact Diophantine solver, even for huge BigInt amounts.
+int solve_nearest_large_two_unlimited(const BigInt *amount,const BigIntArray *denom,
+                                      BigInt *covered,BigIntArray *result) {
+    if(!amount || !amount->digits || !denom || !denom->items ||
+       denom->len!=2 || !covered || !result) return -1;
+    std::size_t a=0,b=0;
+    if(!to_size(&denom->items[0],50000,&a) ||
+       !to_size(&denom->items[1],50000,&b) ||
+       a==0 || b==0 || a==b) return -1;
+    const std::size_t greatest=std::max(a,b),gcd=std::gcd(a,b);
+    ManagedBig increment(std::to_string(gcd)),largest(std::to_string(greatest));
+    ManagedBig quotientG,remainderG,candidate,quotientL,remainderL,minimum;
+    if(!bigint_divmod(amount,&increment.number,&quotientG.number,&remainderG.number) ||
+       !bigint_multiply(&quotientG.number,&increment.number,&candidate.number) ||
+       !bigint_divmod(amount,&largest.number,&quotientL.number,&remainderL.number) ||
+       !bigint_multiply(&quotientL.number,&largest.number,&minimum.number)) return -1;
+    for(std::size_t attempts=0;
+        attempts<=greatest/gcd && !bigint_is_zero(&candidate.number) &&
+        bigint_compare(&candidate.number,&minimum.number)>=0; ++attempts) {
+        int rc=solve_large_two(&candidate.number,denom,nullptr,0,
+                               std::numeric_limits<std::size_t>::max(),result);
+        if(rc==1) {
+            if(!bigint_set(covered,&candidate.number)) {
+                bigint_array_free(result);
+                return -1;
+            }
+            return 1;
+        }
+        if(rc<0) return -1;
+        ManagedBig previous;
+        if(!bigint_subtract(&candidate.number,&increment.number,&previous.number) ||
+           !bigint_set(&candidate.number,&previous.number)) return -1;
+    }
+    return 0;
+}
+
 // Closest change without rebuilding the entire DP for every smaller amount.
 // Used when the lower bound on the coin count is zero.
 int solve_near_single_pass(const BigInt *amount, const BigIntArray *denom,
@@ -682,6 +721,12 @@ int calcular_cambio_optimo_stock_con_limite(const BigInt *m, const BigIntArray *
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
     if (d && d->len == 1)
         return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
+    std::size_t shortAmount=0;
+    if (lo==0 && hi==std::numeric_limits<std::size_t>::max() &&
+        !to_size(m,kMaxAmount,&shortAmount)) {
+        const int exact=solve_nearest_large_two_unlimited(m,d,covered,s);
+        if(exact>=0) return exact;
+    }
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
