@@ -5,6 +5,7 @@
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #endif
@@ -433,12 +434,15 @@ void send_http(HttpSocket client, int code, const std::string &reason,
 }
 
 void handle_http(HttpSocket client) {
+    // One slow client must not monopolize the single-threaded loopback server.
+    const auto request_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     constexpr std::size_t kMaxBody = 1024 * 1024;
     constexpr std::size_t kMaxHeaders = 32768;
     std::string request;
     char buffer[4096];
     std::size_t header_end = std::string::npos;
     while ((header_end = request.find("\r\n\r\n")) == std::string::npos) {
+        if (std::chrono::steady_clock::now() >= request_deadline) return;
         if (request.size() > kMaxHeaders) {
             send_http(client, 431, "Request Header Fields Too Large", "text/plain", "Headers Too Large");
             return;
@@ -478,6 +482,7 @@ void handle_http(HttpSocket client) {
         }
         std::size_t start = header_end + 4;
         while (request.size() < start + *content_length) {
+            if (std::chrono::steady_clock::now() >= request_deadline) return;
             int n = recv(client, buffer, sizeof(buffer), 0);
             if (n <= 0) return;
             request.append(buffer, static_cast<std::size_t>(n));
@@ -541,6 +546,18 @@ int serve_local_http(int port) {
         HttpSocket client = accept(listening, nullptr, nullptr);
         if (client == InvalidHttpSocket) continue;
         HttpSocketGuard client_guard(client);
+        // recv() is blocking. Apply an OS-level upper bound in addition to
+        // the absolute request deadline (a drip-fed client must also expire).
+#ifdef _WIN32
+        DWORD receive_timeout_ms = 5000;
+        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                       reinterpret_cast<const char*>(&receive_timeout_ms),
+                       sizeof(receive_timeout_ms)) != 0) continue;
+#else
+        struct timeval receive_timeout = {5, 0};
+        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                       &receive_timeout, sizeof(receive_timeout)) != 0) continue;
+#endif
 #ifdef SO_NOSIGPIPE
         int no_sigpipe = 1;
         (void)setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
