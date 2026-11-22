@@ -587,15 +587,15 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
     std::size_t requested = 0;
     if (!amount || !denom || !result) return 0;
     if (!to_size(amount, kMaxAmount, &requested)) {
+        // Certify a short optimal solution before sparse stock DP can grow
+        // into hundreds of thousands of states.
+        int shortWitness=solve_large_up_to_four(
+            amount,denom,stock,min_coins,max_coins,result);
+        if (shortWitness>=0) return shortWitness;
         if (stock) {
             int sparse=solve_large_sparse(amount,denom,stock,min_coins,max_coins,result);
             if (sparse>=0) return sparse;
         }
-        // If at most four pieces suffice, a complete meet-in-the-middle
-        // search certifies the minimum even for enormous noncanonical amounts.
-        int shortWitness=solve_large_up_to_four(
-            amount,denom,stock,min_coins,max_coins,result);
-        if (shortWitness>=0) return shortWitness;
         if (denom->len==2) {
             int exact=solve_large_two(amount,denom,stock,min_coins,max_coins,result);
             if (exact>=0) return exact;
