@@ -244,6 +244,27 @@ bool nonnegative_size(const std::string &s, size_t &value) {
     } catch (...) { return false; }
 }
 
+// Export destinations must never overwrite operational data, even through
+// relative paths, symlinks or hardlinks. Existing path identity is resolved
+// by the filesystem, while equal not-yet-existing paths use lexical form.
+bool safe_export_destination(const std::string &path) {
+    if (path.empty()) return false;
+    static constexpr const char *protected_files[] = {
+        "stock.txt", "monedas.txt", "historial.txt", "stock.txt.lock"
+    };
+    std::error_code ec;
+    auto absolute = fs::absolute(path, ec).lexically_normal();
+    if(ec) return false;
+    for (const char *file:protected_files) {
+        auto sensitive=fs::absolute(file, ec).lexically_normal();
+        if(ec) return false;
+        if(absolute==sensitive) return false;
+        ec.clear();
+        if(fs::equivalent(path,file,ec)) return false;
+    }
+    return true;
+}
+
 void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
                    bool english, const Blocks &denoms, const Blocks &stocks) {
     csv_row(out, english ? std::vector<std::string>{"mode","currency","amount","result","note"}
@@ -688,7 +709,8 @@ int run_portable_cli(int argc, char **argv) {
         }
         if (has(args, "--snapshot-stock")) {
             auto path = flag_value(args, "--snapshot-stock");
-            if (!path || path->empty()) throw std::runtime_error("Falta destino snapshot");
+            if (!path || !safe_export_destination(*path))
+                throw std::invalid_argument("Destino del snapshot reservado para datos operativos");
             fs::copy_file("stock.txt", *path, fs::copy_options::overwrite_existing);
             return 0;
         }
@@ -733,7 +755,8 @@ int run_portable_cli(int argc, char **argv) {
             auto json = flag_value(args, "--export-stock-json");
             auto report = flag_value(args, "--export-report");
             std::string path = json.value_or(report.value_or(""));
-            if (path.empty()) throw std::runtime_error("Falta destino de exportacion");
+            if (!safe_export_destination(path))
+                throw std::invalid_argument("Destino de exportacion reservado para datos operativos");
             std::ofstream out(path);
             if (!out) throw std::runtime_error("No se pudo abrir " + path);
             if (json) export_stock_json_cpp(out, denoms, stocks, [&](const std::string &key) { return valid(key, denoms, stocks); });
