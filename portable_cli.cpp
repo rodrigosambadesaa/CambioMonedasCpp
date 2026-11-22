@@ -720,6 +720,12 @@ int run_portable_cli(int argc, char **argv) {
                 if (!*in) throw std::runtime_error("No se pudo leer " + *input);
             }
             if (auto path = flag_value(args, "--output")) {
+                if (input) {
+                    std::error_code error;
+                    if (fs::equivalent(*input, *path, error))
+                        throw std::invalid_argument(
+                            "Entrada y salida CSV apuntan al mismo archivo; no se sobrescribe.");
+                }
                 out = std::make_unique<std::ofstream>(*path);
                 if (!*out) throw std::runtime_error("No se pudo escribir " + *path);
             }
