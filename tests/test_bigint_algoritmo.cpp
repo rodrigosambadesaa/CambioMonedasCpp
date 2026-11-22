@@ -470,8 +470,41 @@ static void test_bigint_unsorted_large_greedy_fallback(void)
 }
 
 
+static void test_sparse_limit_not_false_impossibility(void)
+{
+    // 19 distinct powers of two produce 2^18 > 250,000 sparse states,
+    // although the whole stock sum has the obvious exact solution.
+    // Prior to the fix the sparse solver returned 0 ("impossible") and
+    // prevented the correct large-value fallback from being attempted.
+    std::vector<std::string> values, ones(19,"1");
+    for(int i=18;i>=0;--i)
+        values.push_back(std::to_string((1ULL<<i)*1000000ULL));
+    std::vector<const char*> valuePtrs, stockPtrs;
+    for(const auto &v:values) valuePtrs.push_back(v.c_str());
+    for(const auto &v:ones) stockPtrs.push_back(v.c_str());
+    BigInt amount{nullptr};
+    BigIntArray coins{},stock{},answer{};
+    check_int(bigint_init(&amount,"524287000000"),"sparse limit amount");
+    check_int(crear_arreglo(&coins,valuePtrs.data(),valuePtrs.size()),
+              "sparse limit binary denominations");
+    check_int(crear_arreglo(&stock,stockPtrs.data(),stockPtrs.size()),
+              "sparse limit unit stocks");
+    check_int(calcular_cambio_optimo_stock(&amount,&coins,&stock,&answer),
+              "sparse resource cap must not masquerade as impossibility");
+    check_int(answer.len==19,"sparse cap result denomination count");
+    if(answer.len==19)
+        for(std::size_t i=0;i<answer.len;++i)
+            check_int(answer.items[i].digits &&
+                      std::string(answer.items[i].digits)=="1",
+                      "sparse cap exact binary-coin solution");
+    bigint_array_free(&answer);
+    bigint_array_free(&coins);bigint_array_free(&stock);bigint_free(&amount);
+}
+
+
 int main(void)
 {
+    test_sparse_limit_not_false_impossibility();
     test_bigint_unsorted_large_greedy_fallback();
     test_large_noncanonical_gcd1_small_coin_witness();
     test_medium_exact_two_nonminimal_range();
