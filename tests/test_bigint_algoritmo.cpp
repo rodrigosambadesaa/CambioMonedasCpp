@@ -412,8 +412,68 @@ static void test_sparse_large_inventory(void) {
     bigint_array_free(&denominations);bigint_free(&amount);
 }
 
+static void test_large_noncanonical_gcd1_small_coin_witness(void)
+{
+    const char *d[]={"800001","700000","100001","1"};
+    const char *s[]={"100","2","100","100"};
+    const char *optimal[]={"0","2","0","0"};
+    BigInt amount{nullptr}; BigIntArray denom{},stock{},answer{};
+    check_int(crear_arreglo(&denom,d,4),"noncanonical GCD=1 denom");
+    check_int(bigint_init(&amount,"1400000"),"noncanonical GCD=1 amount");
+    check_int(calcular_cambio_optimo(&amount,&denom,&answer),
+              "noncanonical GCD=1 exact optimum exists");
+    check_arreglo_texto(&answer,optimal,4,"two 700000 pieces beat greedy 100000");
+    bigint_array_free(&answer);
+    check_int(crear_arreglo(&stock,s,4),"noncanonical GCD=1 stock");
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&answer),
+              "noncanonical GCD=1 exact optimum with stock");
+    check_arreglo_texto(&answer,optimal,4,"finite-stock two-coin optimum");
+    bigint_array_free(&answer);bigint_array_free(&stock);bigint_free(&amount);
+
+    const char *three[]={"0","3","0","0"};
+    check_int(bigint_init(&amount,"2100000"),"three-coin large amount");
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,3,&answer),
+              "noncanonical three-piece exact solution exists");
+    check_arreglo_texto(&answer,three,4,"three pieces certified minimal");
+    bigint_array_free(&answer);bigint_free(&amount);
+
+    const char *four[]={"0","4","0","0"};
+    check_int(bigint_init(&amount,"2800000"),"four-coin large amount");
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,4,&answer),
+              "noncanonical four-piece exact solution exists");
+    check_arreglo_texto(&answer,four,4,"four pieces certified minimal");
+    bigint_array_free(&answer);bigint_free(&amount);bigint_array_free(&denom);
+}
+
+static void test_bigint_unsorted_large_greedy_fallback(void)
+{
+    // More than four pieces: bypass the short-witness solver and exercise
+    // the BigInt fallback with user-supplied unsorted coin values.
+    const char *d[]={"1","1000001"};
+    const char *expected[]={"0","5"};
+    const char *st[]={"6000000","5"};
+    BigInt amount{nullptr};BigIntArray denom{},stock{},out{};
+    check_int(bigint_init(&amount,"5000005"),"unsorted BigInt amount");
+    check_int(crear_arreglo(&denom,d,2),"unsorted BigInt denom");
+    check_int(calcular_cambio_optimo(&amount,&denom,&out),
+              "unsorted BigInt exact result");
+    check_arreglo_texto(&out,expected,2,
+              "unsorted BigInt fallback chooses largest value first");
+    bigint_array_free(&out);
+    check_int(crear_arreglo(&stock,st,2),"unsorted BigInt stock");
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&out),
+              "unsorted BigInt stock result");
+    check_arreglo_texto(&out,expected,2,
+              "unsorted BigInt stock fallback preserves input order");
+    bigint_array_free(&out);bigint_array_free(&stock);
+    bigint_array_free(&denom);bigint_free(&amount);
+}
+
+
 int main(void)
 {
+    test_bigint_unsorted_large_greedy_fallback();
+    test_large_noncanonical_gcd1_small_coin_witness();
     test_medium_exact_two_nonminimal_range();
     test_nearest_single_bigint_boundary();
     test_sparse_large_inventory();

@@ -235,6 +235,81 @@ int solve_large_two(const BigInt* amount, const BigIntArray* denom,
     return 1;
 }
 
+// 1=found (provably minimal admissible number of coins), -1=inconclusive.
+// Exhausts all one-/two-/three-/four-piece combinations with meet-in-the-
+// middle pair sums. No allocation proportional to the monetary amount.
+int solve_large_up_to_four(const BigInt *amount,const BigIntArray *denom,
+                           const BigIntArray *stock,std::size_t minimum,
+                           std::size_t maximum,BigIntArray *out) {
+    if(!amount || !denom || !denom->items || !out ||
+       !denom->len || denom->len>64 || minimum>4 || maximum==0 ||
+       (stock && (!stock->items || stock->len!=denom->len)))
+        return -1;
+    std::size_t n=denom->len,limit=std::min(maximum,std::size_t(4));
+    ManagedBig one("1"),two("2"),three("3"),four("4");
+    const BigInt *quantities[]={nullptr,&one.number,&two.number,
+                                 &three.number,&four.number};
+    auto available=[&](std::initializer_list<std::size_t> indices)->bool {
+        if(!stock) return true;
+        for(std::size_t i:indices) {
+            std::size_t used=0;
+            for(std::size_t j:indices) if(i==j) ++used;
+            if(bigint_compare(&stock->items[i],quantities[used])<0)
+                return false;
+        }
+        return true;
+    };
+    auto finish=[&](std::initializer_list<std::size_t> indices)->int {
+        std::vector<std::size_t> counts(n,0);
+        for(std::size_t i:indices) ++counts[i];
+        return set_result(counts,out)?1:-1;
+    };
+    if(minimum<=1 && limit>=1)
+        for(std::size_t i=0;i<n;++i)
+            if(bigint_compare(amount,&denom->items[i])==0 && available({i}))
+                return finish({i});
+    if(limit<2) return -1;
+    using Pair=std::pair<std::size_t,std::size_t>;
+    std::unordered_map<std::string,std::vector<Pair>> pairs;
+    for(std::size_t i=0;i<n;++i)
+        for(std::size_t j=i;j<n;++j) {
+            if(!available({i,j})) continue;
+            ManagedBig sum;
+            if(!bigint_add(&denom->items[i],&denom->items[j],&sum.number))
+                return -1;
+            int cmp=bigint_compare(&sum.number,amount);
+            if(cmp>0) continue;
+            if(cmp==0 && minimum<=2) return finish({i,j});
+            pairs[sum.number.digits].emplace_back(i,j);
+        }
+    if(limit>=3 && minimum<=3)
+        for(std::size_t i=0;i<n;++i) {
+            if(bigint_compare(&denom->items[i],amount)>0) continue;
+            ManagedBig complement;
+            if(!bigint_subtract(amount,&denom->items[i],&complement.number))
+                return -1;
+            auto it=pairs.find(complement.number.digits);
+            if(it==pairs.end()) continue;
+            for(const Pair &p:it->second)
+                if(available({i,p.first,p.second}))
+                    return finish({i,p.first,p.second});
+        }
+    if(limit>=4 && minimum<=4)
+        for(const auto &[str,first]:pairs) {
+            ManagedBig sum(str),complement;
+            if(!bigint_subtract(amount,&sum.number,&complement.number))
+                return -1;
+            auto it=pairs.find(complement.number.digits);
+            if(it==pairs.end()) continue;
+            for(const Pair &a:first)
+                for(const Pair &b:it->second)
+                    if(available({a.first,a.second,b.first,b.second}))
+                        return finish({a.first,a.second,b.first,b.second});
+        }
+    return -1;
+}
+
+
 // Sparse exact bounded BigInt change for <=512 physical coins. Every
 // state carries both sum and piece count (a lower coin bound can require
 // choosing a non-optimal number of pieces for the same amount).
@@ -438,8 +513,17 @@ int solve_large(const BigInt *amount, const BigIntArray *denom, const BigIntArra
         !bigint_array_create(result, denom->len)) {
         bigint_free(&remaining); bigint_free(&count); return 0;
     }
+    // Preserve the result order but process greedy fallback from highest to
+    // lowest denomination, regardless of the caller's array order.
+    std::vector<std::size_t> descending(denom->len);
+    std::iota(descending.begin(), descending.end(), std::size_t(0));
+    std::stable_sort(descending.begin(), descending.end(),
+        [&](std::size_t a, std::size_t b) {
+            return bigint_compare(&denom->items[a], &denom->items[b]) > 0;
+        });
     bool ok = true;
-    for (std::size_t i = 0; i < denom->len && ok; ++i) {
+    for (std::size_t i : descending) {
+        if (!ok) break;
         BigInt q{nullptr}, r{nullptr}, product{nullptr}, next{nullptr}, sum{nullptr};
         ok = !bigint_is_zero(&denom->items[i]) && bigint_divmod(&remaining, &denom->items[i], &q, &r);
         if (ok && stock && bigint_compare(&q, &stock->items[i]) > 0) {
@@ -522,6 +606,9 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         if (exact >= 0) return exact;
     }
     if (!to_size(amount, kMaxAmount, &requested)) {
+        int shortWitness=solve_large_up_to_four(
+            amount,denom,stock,min_coins,max_coins,result);
+        if (shortWitness>=0) return shortWitness;
         if (stock) {
             int sparse=solve_large_sparse(amount,denom,stock,min_coins,max_coins,result);
             if (sparse>=0) return sparse;
