@@ -79,14 +79,22 @@ std::string currency(std::string name) {
 
 Blocks read_blocks(const fs::path &path, bool stock = false) {
     std::ifstream file;
-    // Win32 may briefly reject a read while another process atomically
-    // replaces stock.txt. A bounded read-open retry prevents a false
-    // currency/inventory failure. Do not retry the financial transaction.
-    for (int attempt=0; attempt<1000; ++attempt) {
+    // Windows may briefly deny opening stock.txt during a replacement.
+    // POSIX rename does not have this transient missing-file window; retrying
+    // an actually absent file on Linux/macOS used to block for ~10 seconds.
+#ifdef _WIN32
+    constexpr int maxAttempts = 1000;
+#else
+    constexpr int maxAttempts = 1;
+#endif
+    for (int attempt=0; attempt<maxAttempts; ++attempt) {
         file.open(path);
         if (file.is_open()) break;
         file.clear();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#ifdef _WIN32
+        if (attempt + 1 < maxAttempts)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
     }
     if (!file.is_open())
         throw std::runtime_error("No se pudo abrir " + path.string());

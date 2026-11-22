@@ -1,0 +1,16 @@
+name: C++ POSIX missing-file fast-fail regression
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  missing-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile C++ CLI
+        run: make debug
+      - name: Reject missing data promptly
+        run: python3 tests/test_missing_data_fastfail.py ./progvoraz
