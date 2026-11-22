@@ -284,8 +284,10 @@ int solve_large_sparse(const BigInt* amount, const BigIntArray* denomination,
                     std::make_shared<Node>(Node{prior,i,take}));
             }
             if(next.size()>250000) {
+                // State-space exhaustion does NOT prove infeasibility.
+                // Return "unsupported" so the caller can attempt another solver.
                 std::cerr<<"Busqueda exacta limitada a 250000 estados de inventario\n";
-                return 0;
+                return -1;
             }
             states.swap(next);
             bundle=bundle>remaining/2?remaining:bundle*2;
