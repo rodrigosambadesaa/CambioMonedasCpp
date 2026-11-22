@@ -267,8 +267,13 @@ void process_batch(std::istream &in, std::ostream &out, std::ostream *log,
         std::string range = field(3, "");
         if (!range.empty()) {
             size_t dash = range.find('-'), value = 0;
+            bool exact = range[0] == '=';
+            if (exact && dash != std::string::npos) {
+                csv_row(out, {"", key, amount, "ERROR", "rango invalido"});
+                continue;
+            }
             std::string first = range.substr(0, dash);
-            if (!first.empty() && first[0] == '=') first.erase(first.begin());
+            if (exact) first.erase(first.begin());
             if (!nonnegative_size(first, value)) {
                 csv_row(out, {"", key, amount, "ERROR", "rango invalido"});
                 continue;
