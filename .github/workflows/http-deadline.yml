@@ -1,0 +1,24 @@
+name: C++ HTTP slow-client deadline regression
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deadlines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile C++ console with address and undefined-behavior sanitizers
+        run: |
+          g++ -std=c++20 -O1 -g -Wall -Wextra -Wpedantic \
+            -fsanitize=address,undefined,leak -fno-omit-frame-pointer \
+            main.cpp app_console.cpp portable_cli.cpp gui_launcher.cpp \
+            csv_io.cpp json_io.cpp exchange_api.cpp moneda_gestion.cpp \
+            bigint.cpp vector_dinamico.cpp algoritmo_cambio.cpp -o /tmp/progvoraz-http-deadline
+      - name: Check stalled-client resource timeout
+        run: python3 tests/test_http_stalled_clients.py /tmp/progvoraz-http-deadline
