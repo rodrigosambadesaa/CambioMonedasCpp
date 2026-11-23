@@ -633,8 +633,50 @@ static void test_five_piece_large_noncanonical_gcd_one(void)
     bigint_free(&amount);
 }
 
+static void test_nine_and_twelve_piece_gcd_one(void)
+{
+    // Every coin except 700000 contributes residue 1 modulo 100000.
+    // For at most 12 coins and a multiple of 100000, all coins must
+    // therefore be 700000, proving both optima.
+    const char *d[]={"800001","700000","100001","1"};
+    const char *st[]={"100","12","100","100000"};
+    const char *nine[]={"0","9","0","0"};
+    const char *twelve[]={"0","12","0","0"};
+    BigInt amount{nullptr};
+    BigIntArray denom{},stock{},result{};
+    check_int(crear_arreglo(&denom,d,4),"nine-piece denominations");
+    check_int(crear_arreglo(&stock,st,4),"nine-piece stock");
+    check_int(bigint_init(&amount,"6300000"),"nine-piece amount");
+    check_int(calcular_cambio_optimo(&amount,&denom,&result),
+              "nine-piece BigInt change exists");
+    check_arreglo_texto(&result,nine,4,"nine-piece globally minimal");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&result),
+              "nine-piece bounded BigInt change exists");
+    check_arreglo_texto(&result,nine,4,"nine-piece stock optimum");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,9,&result),
+              "nine-piece maximum respected");
+    check_arreglo_texto(&result,nine,4,"nine-piece bounded count");
+    bigint_array_free(&result);
+    bigint_free(&amount);
+    check_int(bigint_init(&amount,"8400000"),"twelve-piece amount");
+    check_int(calcular_cambio_optimo(&amount,&denom,&result),
+              "twelve-piece BigInt change exists");
+    check_arreglo_texto(&result,twelve,4,"twelve-piece globally minimal");
+    bigint_array_free(&result);
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&result),
+              "twelve-piece bounded BigInt change exists");
+    check_arreglo_texto(&result,twelve,4,"twelve-piece stock optimum");
+    bigint_array_free(&result);
+    bigint_array_free(&denom);
+    bigint_array_free(&stock);
+    bigint_free(&amount);
+}
+
 int main(void)
 {
+    test_nine_and_twelve_piece_gcd_one();
     test_five_piece_large_noncanonical_gcd_one();
     test_nearest_bigint_two_denominations_stock_large();
     test_nearest_coprime_bigint_two_denominations();
