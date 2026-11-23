@@ -359,8 +359,10 @@ int solve_large_sparse(const BigInt* amount, const BigIntArray* denomination,
                     std::make_shared<Node>(Node{prior,i,take}));
             }
             if(next.size()>250000) {
+                // Exhausting the state budget is inconclusive, not a proof
+                // that the requested amount cannot be represented.
                 std::cerr<<"Busqueda exacta limitada a 250000 estados de inventario\n";
-                return 0;
+                return -1;
             }
             states.swap(next);
             bundle=bundle>remaining/2?remaining:bundle*2;
