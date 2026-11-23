@@ -707,7 +707,7 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         int shortWitness=solve_large_up_to_four(
             amount,denom,stock,min_coins,max_coins,result);
         if (shortWitness>=0) return shortWitness;
-        int longerWitness=solve_large_five_to_eight(
+        int longerWitness=solve_large_five_to_twelve(
             amount,denom,stock,min_coins,max_coins,result);
         if (longerWitness>=0) return longerWitness;
         // Exact monetary-unit normalization can recover optimal
