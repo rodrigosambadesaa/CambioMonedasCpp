@@ -310,11 +310,11 @@ int solve_large_up_to_four(const BigInt *amount,const BigIntArray *denom,
 }
 
 
-// For small monetary alphabets, certify five-to-eight coin solutions without
-// allocating memory proportional to the BigInt amount. More than eight coin
-// types is intentionally unsupported to bound the combinatorial search.
+// Certify five-to-eight coins with up to eight denominations, and nine-to-
+// twelve with at most five. This caps combinations and avoids allocations
+// proportional to the potentially astronomical monetary amount.
 // A missing witness means "inconclusive", never "impossible".
-int solve_large_five_to_eight(const BigInt *amount, const BigIntArray *denom,
+int solve_large_five_to_twelve(const BigInt *amount, const BigIntArray *denom,
                               const BigIntArray *stock, std::size_t minimum,
                               std::size_t maximum, BigIntArray *out) {
     if (!amount || !amount->digits || !denom || !denom->items || !out ||
@@ -323,8 +323,8 @@ int solve_large_five_to_eight(const BigInt *amount, const BigIntArray *denom,
         (stock && (!stock->items || stock->len != denom->len)))
         return -1;
 
-    ManagedBig quantities[9];
-    for (std::size_t i=1; i<=8; ++i)
+    ManagedBig quantities[13];
+    for (std::size_t i=1; i<=12; ++i)
         if (!bigint_init(&quantities[i].number, std::to_string(i).c_str()))
             return -1;
     std::vector<std::size_t> counts(denom->len, 0);
@@ -351,7 +351,7 @@ int solve_large_five_to_eight(const BigInt *amount, const BigIntArray *denom,
         return 0;
     };
     for (std::size_t depth=std::max(minimum,std::size_t(5));
-         depth<=std::min(maximum,std::size_t(8)); ++depth) {
+         depth<=std::min(maximum,std::size_t(denom->len<=5 ? 12 : 8)); ++depth) {
         int found=find(find,amount,0,depth);
         if (found==1) return set_result(counts,out) ? 1 : -1;
         if (found<0) return -1;
@@ -707,7 +707,7 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         int shortWitness=solve_large_up_to_four(
             amount,denom,stock,min_coins,max_coins,result);
         if (shortWitness>=0) return shortWitness;
-        int longerWitness=solve_large_five_to_eight(
+        int longerWitness=solve_large_five_to_twelve(
             amount,denom,stock,min_coins,max_coins,result);
         if (longerWitness>=0) return longerWitness;
         // Exact monetary-unit normalization can recover optimal
