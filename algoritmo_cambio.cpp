@@ -310,6 +310,55 @@ int solve_large_up_to_four(const BigInt *amount,const BigIntArray *denom,
 }
 
 
+// For small monetary alphabets, certify five-to-eight coin solutions without
+// allocating memory proportional to the BigInt amount. More than eight coin
+// types is intentionally unsupported to bound the combinatorial search.
+// A missing witness means "inconclusive", never "impossible".
+int solve_large_five_to_eight(const BigInt *amount, const BigIntArray *denom,
+                              const BigIntArray *stock, std::size_t minimum,
+                              std::size_t maximum, BigIntArray *out) {
+    if (!amount || !amount->digits || !denom || !denom->items || !out ||
+        denom->len == 0 || denom->len > 8 || maximum < 5 ||
+        minimum > maximum ||
+        (stock && (!stock->items || stock->len != denom->len)))
+        return -1;
+
+    ManagedBig quantities[9];
+    for (std::size_t i=1; i<=8; ++i)
+        if (!bigint_init(&quantities[i].number, std::to_string(i).c_str()))
+            return -1;
+    std::vector<std::size_t> counts(denom->len, 0);
+    const auto find = [&](auto &&self, const BigInt *remaining,
+                          std::size_t first, std::size_t left) -> int {
+        if (!left) return bigint_is_zero(remaining) ? 1 : 0;
+        if (bigint_is_zero(remaining)) return 0;
+        for (std::size_t i=first; i<denom->len; ++i) {
+            if (!denom->items[i].digits || bigint_is_zero(&denom->items[i]) ||
+                bigint_compare(&denom->items[i], remaining)>0)
+                continue;
+            if (stock && bigint_compare(&stock->items[i],
+                          &quantities[counts[i]+1].number)<0)
+                continue;
+            ManagedBig next;
+            if (!bigint_subtract(remaining,&denom->items[i],&next.number))
+                return -1;
+            ++counts[i];
+            int found=self(self,&next.number,i,left-1);
+            if (found==1) return 1;
+            --counts[i];
+            if (found<0) return -1;
+        }
+        return 0;
+    };
+    for (std::size_t depth=std::max(minimum,std::size_t(5));
+         depth<=std::min(maximum,std::size_t(8)); ++depth) {
+        int found=find(find,amount,0,depth);
+        if (found==1) return set_result(counts,out) ? 1 : -1;
+        if (found<0) return -1;
+    }
+    return -1;
+}
+
 // Sparse exact bounded BigInt change for <=512 physical coins. Every
 // state carries both sum and piece count (a lower coin bound can require
 // choosing a non-optimal number of pieces for the same amount).
@@ -658,6 +707,9 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         int shortWitness=solve_large_up_to_four(
             amount,denom,stock,min_coins,max_coins,result);
         if (shortWitness>=0) return shortWitness;
+        int longerWitness=solve_large_five_to_eight(
+            amount,denom,stock,min_coins,max_coins,result);
+        if (longerWitness>=0) return longerWitness;
         // Exact monetary-unit normalization can recover optimal
         // solutions beyond the four-coin witness budget.
         ScaledChange scaled;
