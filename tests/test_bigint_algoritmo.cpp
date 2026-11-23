@@ -800,6 +800,24 @@ static void test_large_nearest_minimum_two_denominations(void)
               "nearest exact minimum covered");
     check_arreglo_texto(&out,expected,2,"nearest exact minimum counts");
     bigint_array_free(&out);bigint_free(&covered);bigint_free(&amount);
+
+    // This amount is strictly above the C++ ordinary DP ceiling (500000),
+    // forcing the new large-BigInt nearest route instead of the old DP loop.
+    const char *expectedLarge[]={"15","0"};
+    check_int(bigint_init(&amount,"750001"),"nearest minimum above DP amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,15,
+              std::numeric_limits<std::size_t>::max(),&covered,&out),
+              "nearest fifteen-piece result beyond 500000");
+    check_int(covered.digits && std::string(covered.digits)=="750000",
+              "nearest fifteen-piece covered beyond DP");
+    check_arreglo_texto(&out,expectedLarge,2,"nearest fifteen-piece counts");
+    bigint_array_free(&out);bigint_free(&covered);bigint_free(&amount);
+    check_int(bigint_init(&amount,"700001"),"nearest minimum insufficient above DP");
+    check_int(!calcular_cambio_cercano_con_rango(&amount,&denom,15,
+              std::numeric_limits<std::size_t>::max(),&covered,&out),
+              "nearest minimum fifteen pieces provably infeasible");
+    bigint_free(&amount);
+
     bigint_array_free(&denom);
 }
 
