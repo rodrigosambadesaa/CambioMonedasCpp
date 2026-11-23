@@ -323,6 +323,23 @@ int solve_large_five_to_twenty(const BigInt *amount, const BigIntArray *denom,
         (stock && (!stock->items || stock->len != denom->len)))
         return -1;
 
+    // No combination of the allowed number of coins can pay more
+    // than maxDepth times the largest available denomination.
+    // This rigorous cutoff saves large BigInt searches on 10k-digit inputs.
+    const std::size_t maxDepth=std::min(maximum,std::size_t(
+        denom->len<=4 ? 20 : denom->len<=5 ? 12 : 8));
+    const BigInt *largest=&denom->items[0];
+    for(std::size_t i=0;i<denom->len;++i) {
+        if(!denom->items[i].digits) return -1;
+        if(bigint_compare(&denom->items[i],largest)>0)
+            largest=&denom->items[i];
+    }
+    ManagedBig countLimit(std::to_string(maxDepth)),maximumCovered;
+    if(!bigint_multiply(largest,&countLimit.number,&maximumCovered.number))
+        return -1;
+    if(bigint_compare(amount,&maximumCovered.number)>0)
+        return -1;
+
     ManagedBig quantities[21];
     for (std::size_t i=1; i<=20; ++i)
         if (!bigint_init(&quantities[i].number, std::to_string(i).c_str()))
