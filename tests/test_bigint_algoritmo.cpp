@@ -772,8 +772,40 @@ static void test_large_nearest_at_most_two_coins(void)
     bigint_array_free(&denom); bigint_free(&amount);
 }
 
+static void test_large_nearest_minimum_two_denominations(void)
+{
+    const char *d[]={"50000","49999"};
+    const char *expected[]={"5","0"};
+    BigInt amount{nullptr},covered{nullptr};
+    BigIntArray denom{},out{};
+    check_int(crear_arreglo(&denom,d,2),"nearest minimum types");
+    check_int(bigint_init(&amount,"250001"),"nearest minimum amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,5,
+              std::numeric_limits<std::size_t>::max(),&covered,&out),
+              "nearest with minimum five pieces must return best lower sum");
+    check_int(covered.digits && std::string(covered.digits)=="250000",
+              "nearest with minimum five pieces coverage");
+    check_arreglo_texto(&out,expected,2,"nearest with minimum five pieces counts");
+    bigint_array_free(&out);bigint_free(&covered);bigint_free(&amount);
+    check_int(bigint_init(&amount,"200000"),"nearest impossible minimum");
+    check_int(!calcular_cambio_cercano_con_rango(&amount,&denom,5,
+              std::numeric_limits<std::size_t>::max(),&covered,&out),
+              "nearest minimum five cannot fit below five times smallest");
+    bigint_free(&amount);
+    check_int(bigint_init(&amount,"250000"),"nearest exact minimum amount");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,5,
+              std::numeric_limits<std::size_t>::max(),&covered,&out),
+              "nearest minimum should retain exact sum");
+    check_int(covered.digits && std::string(covered.digits)=="250000",
+              "nearest exact minimum covered");
+    check_arreglo_texto(&out,expected,2,"nearest exact minimum counts");
+    bigint_array_free(&out);bigint_free(&covered);bigint_free(&amount);
+    bigint_array_free(&denom);
+}
+
 int main(void)
 {
+    test_large_nearest_minimum_two_denominations();
     test_large_nearest_at_most_two_coins();
     test_thirteen_and_twenty_piece_gcd_one();
     test_nine_and_twelve_piece_gcd_one();
