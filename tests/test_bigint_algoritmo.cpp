@@ -720,8 +720,61 @@ static void test_thirteen_and_twenty_piece_gcd_one(void)
     bigint_array_free(&stock);
 }
 
+static void test_large_nearest_at_most_two_coins(void)
+{
+    const char *d[]={"800000","700000","400000"};
+    const char *st[]={"0","1","2"};
+    const char *expected[]={"1","0","1"};
+    const char *expectedStock[]={"0","1","1"};
+    BigInt amount{nullptr}, covered{nullptr};
+    BigIntArray denom{},stock{},out{};
+    check_int(bigint_init(&amount,"1200001"),"near two big amount");
+    check_int(crear_arreglo(&denom,d,3),"near two big denoms");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,0,2,&covered,&out),
+              "near two big non-exact solution");
+    check_int(covered.digits && std::string(covered.digits)=="1200000",
+              "near two big amount covered");
+    check_arreglo_texto(&out,expected,3,"near two big optimum counts");
+    bigint_array_free(&out); bigint_free(&covered);
+    check_int(crear_arreglo(&stock,st,3),"near two big stock");
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denom,&stock,
+              0,2,&covered,&out),"near two big limited stock");
+    check_int(covered.digits && std::string(covered.digits)=="1100000",
+              "near two big stock covered");
+    check_arreglo_texto(&out,expectedStock,3,"near two big stock counts");
+    bigint_array_free(&out); bigint_free(&covered);
+    bigint_array_free(&stock); bigint_array_free(&denom); bigint_free(&amount);
+
+    const char *d2[]={"600000","350000","200000"};
+    const char *s2[]={"0","1","1"};
+    const char *expect2[]={"0","1","1"};
+    check_int(bigint_init(&amount,"700001"),"nearest no double amount");
+    check_int(crear_arreglo(&denom,d2,3),"nearest no double denoms");
+    check_int(crear_arreglo(&stock,s2,3),"nearest no double stock");
+    check_int(calcular_cambio_cercano_stock_con_rango(&amount,&denom,&stock,
+              0,2,&covered,&out),"nearest cannot spend unavailable second coin");
+    check_int(covered.digits && std::string(covered.digits)=="550000",
+              "nearest cannot double a single physical coin");
+    check_arreglo_texto(&out,expect2,3,"nearest single-stock bound");
+    bigint_array_free(&out); bigint_free(&covered); bigint_array_free(&stock);
+    bigint_array_free(&denom); bigint_free(&amount);
+
+    const char *d3[]={"800000","400000","200000"};
+    const char *expect3[]={"0","2","0"};
+    check_int(bigint_init(&amount,"800001"),"nearest minimum amount");
+    check_int(crear_arreglo(&denom,d3,3),"nearest minimum denom");
+    check_int(calcular_cambio_cercano_con_rango(&amount,&denom,2,2,&covered,&out),
+              "nearest exactly two pieces");
+    check_int(covered.digits && std::string(covered.digits)=="800000",
+              "nearest exactly two amount");
+    check_arreglo_texto(&out,expect3,3,"nearest exactly two pieces counts");
+    bigint_array_free(&out); bigint_free(&covered);
+    bigint_array_free(&denom); bigint_free(&amount);
+}
+
 int main(void)
 {
+    test_large_nearest_at_most_two_coins();
     test_thirteen_and_twenty_piece_gcd_one();
     test_nine_and_twelve_piece_gcd_one();
     test_five_piece_large_noncanonical_gcd_one();
