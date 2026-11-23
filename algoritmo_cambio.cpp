@@ -594,6 +594,53 @@ bool solve_constrained(std::size_t amount, const std::vector<std::size_t> &value
     return false;
 }
 
+// Divide a monetary system by the GCD of its denominations when all values
+// fit size_t. This is exact: counts and stock do not change, and for nearest
+// change only multiples of this common unit can be represented.
+struct ScaledChange {
+    BigInt factor{nullptr}, amount{nullptr}, remainder{nullptr};
+    BigIntArray denominations{nullptr, 0};
+    ScaledChange() = default;
+    ScaledChange(const ScaledChange&) = delete;
+    ScaledChange& operator=(const ScaledChange&) = delete;
+    ~ScaledChange() {
+        bigint_free(&factor);
+        bigint_free(&amount);
+        bigint_free(&remainder);
+        bigint_array_free(&denominations);
+    }
+};
+
+bool scale_common_unit(const BigInt *amount, const BigIntArray *denom,
+                       ScaledChange *out) {
+    if (!amount || !denom || !denom->items || !denom->len || !out)
+        return false;
+    std::vector<std::size_t> values;
+    std::size_t divisor = 0;
+    for (std::size_t i = 0; i < denom->len; ++i) {
+        std::size_t value = 0;
+        if (!to_size(&denom->items[i], std::numeric_limits<std::size_t>::max(),
+                     &value) || !value)
+            return false;
+        values.push_back(value);
+        divisor = std::gcd(divisor, value);
+    }
+    if (divisor <= 1 || !bigint_init(&out->factor, std::to_string(divisor).c_str()) ||
+        !bigint_divmod(amount, &out->factor, &out->amount, &out->remainder) ||
+        !bigint_array_create(&out->denominations, denom->len))
+        return false;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        BigInt candidate{nullptr};
+        bool ok = bigint_init(&candidate,
+            std::to_string(values[i] / divisor).c_str()) &&
+            bigint_array_set(&out->denominations, i, &candidate);
+        bigint_free(&candidate);
+        if (!ok) return false;
+    }
+    return true;
+}
+
+
 int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *stock,
           std::size_t min_coins, std::size_t max_coins, BigIntArray *result) {
     std::size_t requested = 0;
@@ -611,6 +658,15 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         int shortWitness=solve_large_up_to_four(
             amount,denom,stock,min_coins,max_coins,result);
         if (shortWitness>=0) return shortWitness;
+        // Exact monetary-unit normalization can recover optimal
+        // solutions beyond the four-coin witness budget.
+        ScaledChange scaled;
+        if (scale_common_unit(amount, denom, &scaled)) {
+            if (!bigint_is_zero(&scaled.remainder))
+                return 0;
+            return solve(&scaled.amount, &scaled.denominations, stock,
+                         min_coins, max_coins, result);
+        }
         if (stock) {
             int sparse=solve_large_sparse(amount,denom,stock,min_coins,max_coins,result);
             if (sparse>=0) return sparse;
@@ -908,6 +964,38 @@ int solve_near(const BigInt *amount, BigInt *covered, BigIntArray *result, Solve
     }
     return 0;
 }
+// A nearest result can be normalized even when the requested amount is not
+// divisible by the common unit: integer division gives the largest possible
+// scaled target, and the covered amount is multiplied back on success.
+int solve_near_common_unit(const BigInt *amount, const BigIntArray *denom,
+                           const BigIntArray *stock, std::size_t lo,
+                           std::size_t hi, BigInt *covered, BigIntArray *result) {
+    ScaledChange scaled;
+    if (!scale_common_unit(amount, denom, &scaled))
+        return -1;
+    // The DP-based nearest solver only supports amounts <=500,000.
+    // An oversized *normalized* amount is unsupported, not proof that
+    // no smaller representable sum exists. The outer caller may have
+    // an exact large-BigInt route (for example two denominations).
+    std::size_t normalizedAmount = 0;
+    if (!to_size(&scaled.amount, kMaxAmount, &normalizedAmount))
+        return -1;
+    BigInt scaledCovered{nullptr};
+    int ok = lo == 0
+        ? solve_near_single_pass(&scaled.amount, &scaled.denominations, stock,
+                                 hi, &scaledCovered, result)
+        : solve_near(&scaled.amount, &scaledCovered, result,
+                     [&](const BigInt *candidate, BigIntArray *out) {
+                         return solve(candidate, &scaled.denominations, stock,
+                                      lo, hi, out);
+                     });
+    if (ok && !bigint_multiply(&scaledCovered, &scaled.factor, covered)) {
+        bigint_array_free(result);
+        ok = 0;
+    }
+    bigint_free(&scaledCovered);
+    return ok;
+}
 }
 
 int calcular_cambio_optimo(const BigInt *m, const BigIntArray *d, BigIntArray *s) { return solve(m, d, nullptr, 0, std::numeric_limits<std::size_t>::max(), s); }
@@ -960,6 +1048,11 @@ int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std
         int exact=solve_nearest_large_two_unlimited(m,d,covered,s);
         if(exact>=0) return exact;
     }
+    std::size_t smallAmount=0;
+    if (m && !to_size(m,kMaxAmount,&smallAmount)) {
+        int scaled=solve_near_common_unit(m,d,nullptr,lo,hi,covered,s);
+        if (scaled>=0) return scaled;
+    }
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
@@ -976,6 +1069,11 @@ int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *
             int exact=solve_nearest_large_two_stock(m,d,st,covered,s);
             if(exact>=0) return exact;
         }
+    }
+    std::size_t smallStockAmount=0;
+    if (m && !to_size(m,kMaxAmount,&smallStockAmount)) {
+        int scaled=solve_near_common_unit(m,d,st,lo,hi,covered,s);
+        if (scaled>=0) return scaled;
     }
     if (lo==0) return solve_near_single_pass(m,d,st,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, st, lo, hi, out); });
