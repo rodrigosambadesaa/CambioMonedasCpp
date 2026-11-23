@@ -644,6 +644,146 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
 }
 
 
+// A single largest denomination proves that an amount in
+// [floor(amount/largest)*largest, amount] can be paid. For two unlimited
+// denominations <=50000, test at most largest/gcd descending candidates,
+// each with the exact Diophantine solver, even for huge BigInt amounts.
+int solve_nearest_large_two_unlimited(const BigInt *amount,const BigIntArray *denom,
+                                      BigInt *covered,BigIntArray *result) {
+    if(!amount || !amount->digits || !denom || !denom->items ||
+       denom->len!=2 || !covered || !result) return -1;
+    std::size_t a=0,b=0;
+    if(!to_size(&denom->items[0],50000,&a) ||
+       !to_size(&denom->items[1],50000,&b) ||
+       a==0 || b==0 || a==b) return -1;
+    const std::size_t greatest=std::max(a,b),gcd=std::gcd(a,b);
+    ManagedBig increment(std::to_string(gcd)),largest(std::to_string(greatest));
+    ManagedBig quotientG,remainderG,candidate,quotientL,remainderL,minimum;
+    if(!bigint_divmod(amount,&increment.number,&quotientG.number,&remainderG.number) ||
+       !bigint_multiply(&quotientG.number,&increment.number,&candidate.number) ||
+       !bigint_divmod(amount,&largest.number,&quotientL.number,&remainderL.number) ||
+       !bigint_multiply(&quotientL.number,&largest.number,&minimum.number)) return -1;
+    for(std::size_t attempts=0;
+        attempts<=greatest/gcd && !bigint_is_zero(&candidate.number) &&
+        bigint_compare(&candidate.number,&minimum.number)>=0; ++attempts) {
+        int rc=solve_large_two(&candidate.number,denom,nullptr,0,
+                               std::numeric_limits<std::size_t>::max(),result);
+        if(rc==1) {
+            if(!bigint_set(covered,&candidate.number)) {
+                bigint_array_free(result);
+                return -1;
+            }
+            return 1;
+        }
+        if(rc<0) return -1;
+        ManagedBig previous;
+        if(!bigint_subtract(&candidate.number,&increment.number,&previous.number) ||
+           !bigint_set(&candidate.number,&previous.number)) return -1;
+    }
+    return 0;
+}
+
+// Exact nearest two-denomination change with arbitrary-size finite stocks.
+// For each smaller-coin count residue modulo a/gcd(a,b), the covered value
+// increases while the larger-coin stock is saturated; after the saturation
+// boundary the covered amount is constant and the fewer coins are preferable.
+// Hence only the two neighbors at that boundary can be optimal.
+// This scans at most 2*a/gcd(a,b) candidates with no amount-sized DP.
+int solve_nearest_large_two_stock(const BigInt *amount,const BigIntArray *denom,
+                                  const BigIntArray *stock,
+                                  BigInt *covered,BigIntArray *result) {
+    if (!amount || !amount->digits || !denom || !denom->items ||
+        denom->len!=2 || !stock || !stock->items || stock->len!=2 ||
+        !covered || !result) return -1;
+    std::size_t values[2]={0,0};
+    if (!to_size(&denom->items[0],50000,&values[0]) ||
+        !to_size(&denom->items[1],50000,&values[1]) ||
+        !values[0] || !values[1] || values[0]==values[1]) return -1;
+    const std::size_t high=values[0]>values[1]?0:1,low=1-high;
+    const std::size_t periodSize=values[high]/std::gcd(values[high],values[low]);
+    ManagedBig highCoin(std::to_string(values[high])),
+               lowCoin(std::to_string(values[low])),
+               period(std::to_string(periodSize)),one("1");
+    ManagedBig quotient,unused,maxY,maxHighValue,capDelta,saturated;
+    if (!bigint_divmod(amount,&lowCoin.number,&quotient.number,&unused.number) ||
+        !bigint_set(&maxY.number,
+            bigint_compare(&quotient.number,&stock->items[low])<0
+                ? &quotient.number:&stock->items[low]) ||
+        !bigint_multiply(&highCoin.number,&stock->items[high],
+                         &maxHighValue.number)) return -1;
+    const bool hasSaturated=bigint_compare(amount,&maxHighValue.number)>=0;
+    if(hasSaturated &&
+       (!bigint_subtract(amount,&maxHighValue.number,&capDelta.number) ||
+        !bigint_divmod(&capDelta.number,&lowCoin.number,
+                       &saturated.number,&unused.number))) return -1;
+
+    ManagedBig bestAmount,bestTotal,bestX,bestY;
+    bool found=false;
+    const auto consider=[&](const BigInt *y)->bool {
+        if(bigint_compare(y,&maxY.number)>0) return true;
+        ManagedBig smallMoney,remaining,q,r,x,bigMoney,candidate,total;
+        if(!bigint_multiply(y,&lowCoin.number,&smallMoney.number) ||
+           !bigint_subtract(amount,&smallMoney.number,&remaining.number) ||
+           !bigint_divmod(&remaining.number,&highCoin.number,
+                          &q.number,&r.number) ||
+           !bigint_set(&x.number,
+                bigint_compare(&q.number,&stock->items[high])<0
+                    ? &q.number:&stock->items[high]) ||
+           !bigint_multiply(&x.number,&highCoin.number,&bigMoney.number) ||
+           !bigint_add(&bigMoney.number,&smallMoney.number,&candidate.number) ||
+           !bigint_add(&x.number,y,&total.number)) return false;
+        if(bigint_is_zero(&candidate.number)) return true;
+        int cmp=found?bigint_compare(&candidate.number,&bestAmount.number):1;
+        if(cmp>0 || (cmp==0 &&
+             bigint_compare(&total.number,&bestTotal.number)<0)) {
+            if(!bigint_set(&bestAmount.number,&candidate.number) ||
+               !bigint_set(&bestTotal.number,&total.number) ||
+               !bigint_set(&bestX.number,&x.number) ||
+               !bigint_set(&bestY.number,y)) return false;
+            found=true;
+        }
+        return true;
+    };
+    for(std::size_t residue=0;residue<periodSize;++residue) {
+        ManagedBig y0(std::to_string(residue));
+        if(bigint_compare(&y0.number,&maxY.number)>0) break;
+        if(hasSaturated && bigint_compare(&saturated.number,&y0.number)>=0) {
+            const BigInt *end=bigint_compare(&saturated.number,&maxY.number)<0
+                ? &saturated.number:&maxY.number;
+            ManagedBig delta,steps,rem,shift,candidate;
+            if(!bigint_subtract(end,&y0.number,&delta.number) ||
+               !bigint_divmod(&delta.number,&period.number,
+                              &steps.number,&rem.number) ||
+               !bigint_multiply(&steps.number,&period.number,&shift.number) ||
+               !bigint_add(&y0.number,&shift.number,&candidate.number) ||
+               !consider(&candidate.number)) return -1;
+        }
+        if(!hasSaturated ||
+            bigint_compare(&saturated.number,&y0.number)<0) {
+            if(!consider(&y0.number)) return -1;
+        } else {
+            ManagedBig delta,steps,rem,next,shift,candidate;
+            if(!bigint_subtract(&saturated.number,&y0.number,&delta.number) ||
+               !bigint_divmod(&delta.number,&period.number,
+                              &steps.number,&rem.number) ||
+               !bigint_add(&steps.number,&one.number,&next.number) ||
+               !bigint_multiply(&next.number,&period.number,&shift.number) ||
+               !bigint_add(&y0.number,&shift.number,&candidate.number) ||
+               !consider(&candidate.number)) return -1;
+        }
+    }
+    if(!found) return 0;
+    if(!bigint_array_create(result,2)) return -1;
+    if(!bigint_array_set(result,high,&bestX.number) ||
+       !bigint_array_set(result,low,&bestY.number) ||
+       !bigint_set(covered,&bestAmount.number)) {
+        bigint_array_free(result);
+        return -1;
+    }
+    return 1;
+}
+
+
 // Closest change without rebuilding the entire DP for every smaller amount.
 // Used when the lower bound on the coin count is zero.
 int solve_near_single_pass(const BigInt *amount, const BigIntArray *denom,
@@ -814,6 +954,12 @@ int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std
         return solve_near_any_one_coin(m,d,nullptr,covered,s);
     if (d && d->len == 1)
         return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
+    std::size_t shortAmount=0;
+    if (lo==0 && hi==std::numeric_limits<std::size_t>::max() &&
+        !to_size(m,kMaxAmount,&shortAmount)) {
+        int exact=solve_nearest_large_two_unlimited(m,d,covered,s);
+        if(exact>=0) return exact;
+    }
     if (lo==0) return solve_near_single_pass(m,d,nullptr,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, nullptr, lo, hi, out); });
 }
@@ -826,6 +972,10 @@ int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *
     if (!to_size(m,kMaxAmount,&small)) {
         int sparse=solve_large_sparse(m,d,st,lo,hi,s,covered);
         if (sparse>=0) return sparse;
+        if (lo==0 && hi==std::numeric_limits<std::size_t>::max()) {
+            int exact=solve_nearest_large_two_stock(m,d,st,covered,s);
+            if(exact>=0) return exact;
+        }
     }
     if (lo==0) return solve_near_single_pass(m,d,st,hi,covered,s);
     return solve_near(m, covered, s, [=](const BigInt *candidate, BigIntArray *out) { return solve(candidate, d, st, lo, hi, out); });
