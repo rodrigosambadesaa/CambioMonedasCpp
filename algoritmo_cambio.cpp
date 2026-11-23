@@ -310,11 +310,11 @@ int solve_large_up_to_four(const BigInt *amount,const BigIntArray *denom,
 }
 
 
-// Certify five-to-eight coins with up to eight denominations, and nine-to-
-// twelve with at most five. This caps combinations and avoids allocations
-// proportional to the potentially astronomical monetary amount.
+// Certify five-to-eight coins with at most eight denominations, nine-to-
+// twelve with at most five, and thirteen-to-twenty with at most four.
+// All searches are combinatorially bounded and independent of amount size.
 // A missing witness means "inconclusive", never "impossible".
-int solve_large_five_to_twelve(const BigInt *amount, const BigIntArray *denom,
+int solve_large_five_to_twenty(const BigInt *amount, const BigIntArray *denom,
                               const BigIntArray *stock, std::size_t minimum,
                               std::size_t maximum, BigIntArray *out) {
     if (!amount || !amount->digits || !denom || !denom->items || !out ||
@@ -323,8 +323,25 @@ int solve_large_five_to_twelve(const BigInt *amount, const BigIntArray *denom,
         (stock && (!stock->items || stock->len != denom->len)))
         return -1;
 
-    ManagedBig quantities[13];
-    for (std::size_t i=1; i<=12; ++i)
+    // No combination of the allowed number of coins can pay more
+    // than maxDepth times the largest available denomination.
+    // This rigorous cutoff saves large BigInt searches on 10k-digit inputs.
+    const std::size_t maxDepth=std::min(maximum,std::size_t(
+        denom->len<=4 ? 20 : denom->len<=5 ? 12 : 8));
+    const BigInt *largest=&denom->items[0];
+    for(std::size_t i=0;i<denom->len;++i) {
+        if(!denom->items[i].digits) return -1;
+        if(bigint_compare(&denom->items[i],largest)>0)
+            largest=&denom->items[i];
+    }
+    ManagedBig countLimit(std::to_string(maxDepth)),maximumCovered;
+    if(!bigint_multiply(largest,&countLimit.number,&maximumCovered.number))
+        return -1;
+    if(bigint_compare(amount,&maximumCovered.number)>0)
+        return -1;
+
+    ManagedBig quantities[21];
+    for (std::size_t i=1; i<=20; ++i)
         if (!bigint_init(&quantities[i].number, std::to_string(i).c_str()))
             return -1;
     std::vector<std::size_t> counts(denom->len, 0);
@@ -351,7 +368,7 @@ int solve_large_five_to_twelve(const BigInt *amount, const BigIntArray *denom,
         return 0;
     };
     for (std::size_t depth=std::max(minimum,std::size_t(5));
-         depth<=std::min(maximum,std::size_t(denom->len<=5 ? 12 : 8)); ++depth) {
+         depth<=std::min(maximum,std::size_t(denom->len<=4 ? 20 : denom->len<=5 ? 12 : 8)); ++depth) {
         int found=find(find,amount,0,depth);
         if (found==1) return set_result(counts,out) ? 1 : -1;
         if (found<0) return -1;
@@ -707,7 +724,7 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
         int shortWitness=solve_large_up_to_four(
             amount,denom,stock,min_coins,max_coins,result);
         if (shortWitness>=0) return shortWitness;
-        int longerWitness=solve_large_five_to_twelve(
+        int longerWitness=solve_large_five_to_twenty(
             amount,denom,stock,min_coins,max_coins,result);
         if (longerWitness>=0) return longerWitness;
         // Exact monetary-unit normalization can recover optimal
