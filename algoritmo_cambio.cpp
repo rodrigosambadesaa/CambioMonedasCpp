@@ -770,10 +770,12 @@ int solve(const BigInt *amount, const BigIntArray *denom, const BigIntArray *sto
 
 
 // A single largest denomination proves that an amount in
-// [floor(amount/largest)*largest, amount] can be paid. For two unlimited
-// denominations <=50000, test at most largest/gcd descending candidates,
-// each with the exact Diophantine solver, even for huge BigInt amounts.
+// Starting with min_coins copies of the smallest denomination and then
+// filling with the largest gives a guaranteed reachable amount less than
+// one largest coin below the requested amount. Test at most largest/gcd
+// descending candidates, even for arbitrarily large BigInt requests.
 int solve_nearest_large_two_unlimited(const BigInt *amount,const BigIntArray *denom,
+                                      std::size_t min_coins,
                                       BigInt *covered,BigIntArray *result) {
     if(!amount || !amount->digits || !denom || !denom->items ||
        denom->len!=2 || !covered || !result) return -1;
@@ -782,16 +784,24 @@ int solve_nearest_large_two_unlimited(const BigInt *amount,const BigIntArray *de
        !to_size(&denom->items[1],50000,&b) ||
        a==0 || b==0 || a==b) return -1;
     const std::size_t greatest=std::max(a,b),gcd=std::gcd(a,b);
-    ManagedBig increment(std::to_string(gcd)),largest(std::to_string(greatest));
-    ManagedBig quotientG,remainderG,candidate,quotientL,remainderL,minimum;
-    if(!bigint_divmod(amount,&increment.number,&quotientG.number,&remainderG.number) ||
+    ManagedBig increment(std::to_string(gcd)),largest(std::to_string(greatest)),
+               smallest(std::to_string(std::min(a,b))),
+               required(std::to_string(min_coins));
+    ManagedBig minCost,room,quotientG,remainderG,candidate;
+    ManagedBig quotientL,remainderL,extra,minimum;
+    if(!bigint_multiply(&smallest.number,&required.number,&minCost.number))
+        return -1;
+    if(bigint_compare(amount,&minCost.number)<0) return 0;
+    if(!bigint_subtract(amount,&minCost.number,&room.number) ||
+       !bigint_divmod(amount,&increment.number,&quotientG.number,&remainderG.number) ||
        !bigint_multiply(&quotientG.number,&increment.number,&candidate.number) ||
-       !bigint_divmod(amount,&largest.number,&quotientL.number,&remainderL.number) ||
-       !bigint_multiply(&quotientL.number,&largest.number,&minimum.number)) return -1;
+       !bigint_divmod(&room.number,&largest.number,&quotientL.number,&remainderL.number) ||
+       !bigint_multiply(&quotientL.number,&largest.number,&extra.number) ||
+       !bigint_add(&minCost.number,&extra.number,&minimum.number)) return -1;
     for(std::size_t attempts=0;
         attempts<=greatest/gcd && !bigint_is_zero(&candidate.number) &&
         bigint_compare(&candidate.number,&minimum.number)>=0; ++attempts) {
-        int rc=solve_large_two(&candidate.number,denom,nullptr,0,
+        int rc=solve_large_two(&candidate.number,denom,nullptr,min_coins,
                                std::numeric_limits<std::size_t>::max(),result);
         if(rc==1) {
             if(!bigint_set(covered,&candidate.number)) {
@@ -1170,9 +1180,9 @@ int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std
     if (hi == 2 && lo <= 2 && d && d->len <= 256)
         return solve_near_any_two_coins(m,d,nullptr,lo,covered,s);
     std::size_t shortAmount=0;
-    if (lo==0 && hi==std::numeric_limits<std::size_t>::max() &&
+    if (hi==std::numeric_limits<std::size_t>::max() &&
         !to_size(m,kMaxAmount,&shortAmount)) {
-        int exact=solve_nearest_large_two_unlimited(m,d,covered,s);
+        int exact=solve_nearest_large_two_unlimited(m,d,lo,covered,s);
         if(exact>=0) return exact;
     }
     std::size_t smallAmount=0;
