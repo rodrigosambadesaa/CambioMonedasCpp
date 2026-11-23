@@ -674,8 +674,55 @@ static void test_nine_and_twelve_piece_gcd_one(void)
     bigint_free(&amount);
 }
 
+static void test_thirteen_and_twenty_piece_gcd_one(void)
+{
+    // For <=20 pieces, only the 700000 denomination is 0 mod 100000.
+    // The remaining coin types contribute residue 1 and cannot appear
+    // in any solution for a multiple of 100000.
+    const char *d[]={"800001","700000","100001","1"};
+    const char *st[]={"100","20","100","100000"};
+    const char *thirteen[]={"0","13","0","0"};
+    const char *twenty[]={"0","20","0","0"};
+    BigInt amount{nullptr};
+    BigIntArray denom{},stock{},out{};
+    check_int(crear_arreglo(&denom,d,4),"thirteen-piece denominations");
+    check_int(crear_arreglo(&stock,st,4),"thirteen-piece stock");
+    check_int(bigint_init(&amount,"9100000"),"thirteen-piece amount");
+    check_int(calcular_cambio_optimo(&amount,&denom,&out),
+              "thirteen-piece BigInt unlimited change");
+    check_arreglo_texto(&out,thirteen,4,"thirteen-piece certified optimum");
+    bigint_array_free(&out);
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&out),
+              "thirteen-piece finite stock");
+    check_arreglo_texto(&out,thirteen,4,"thirteen-piece stock optimum");
+    bigint_array_free(&out);
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,13,&out),
+              "thirteen-piece maximum");
+    check_arreglo_texto(&out,thirteen,4,"thirteen-piece max respected");
+    bigint_array_free(&out);
+    bigint_free(&amount);
+
+    check_int(bigint_init(&amount,"14000000"),"twenty-piece amount");
+    check_int(calcular_cambio_optimo(&amount,&denom,&out),
+              "twenty-piece BigInt unlimited change");
+    check_arreglo_texto(&out,twenty,4,"twenty-piece certified optimum");
+    bigint_array_free(&out);
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&out),
+              "twenty-piece finite stock");
+    check_arreglo_texto(&out,twenty,4,"twenty-piece stock optimum");
+    bigint_array_free(&out);
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,20,&out),
+              "twenty-piece maximum");
+    check_arreglo_texto(&out,twenty,4,"twenty-piece max respected");
+    bigint_array_free(&out);
+    bigint_free(&amount);
+    bigint_array_free(&denom);
+    bigint_array_free(&stock);
+}
+
 int main(void)
 {
+    test_thirteen_and_twenty_piece_gcd_one();
     test_nine_and_twelve_piece_gcd_one();
     test_five_piece_large_noncanonical_gcd_one();
     test_nearest_bigint_two_denominations_stock_large();
