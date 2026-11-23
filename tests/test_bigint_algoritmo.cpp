@@ -603,8 +603,39 @@ static void test_nearest_bigint_two_denominations_stock_large(void)
 }
 
 
+static void test_five_piece_large_noncanonical_gcd_one(void)
+{
+    // Four coins cannot pay 3,500,000 because each is at most 800,001.
+    // Five 700,000-unit coins are therefore a globally optimal witness.
+    const char *d[]={"800001","700000","100001","1"};
+    const char *st[]={"100","5","100","1000000"};
+    const char *expected[]={"0","5","0","0"};
+    BigInt amount{nullptr};
+    BigIntArray denom{},stock{},out{};
+    check_int(bigint_init(&amount,"3500000"),"five-piece target");
+    check_int(crear_arreglo(&denom,d,4),"five-piece denominations");
+    check_int(calcular_cambio_optimo(&amount,&denom,&out),
+              "five-piece gcd-one unbounded solution exists");
+    check_arreglo_texto(&out,expected,4,
+                        "five-piece optimum must beat BigInt greedy fallback");
+    bigint_array_free(&out);
+    check_int(crear_arreglo(&stock,st,4),"five-piece finite inventory");
+    check_int(calcular_cambio_optimo_stock(&amount,&denom,&stock,&out),
+              "five-piece exact solution with stock");
+    check_arreglo_texto(&out,expected,4,"five-piece stock optimum");
+    bigint_array_free(&out);
+    check_int(calcular_cambio_optimo_con_limite(&amount,&denom,5,&out),
+              "five-piece constrained exact solution");
+    check_arreglo_texto(&out,expected,4,"five-piece maximum respected");
+    bigint_array_free(&out);
+    bigint_array_free(&denom);
+    bigint_array_free(&stock);
+    bigint_free(&amount);
+}
+
 int main(void)
 {
+    test_five_piece_large_noncanonical_gcd_one();
     test_nearest_bigint_two_denominations_stock_large();
     test_nearest_coprime_bigint_two_denominations();
     test_nearest_bigint_two_denominations();
