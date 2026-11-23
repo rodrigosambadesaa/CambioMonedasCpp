@@ -1106,11 +1106,69 @@ int solve_near_any_one_coin(const BigInt *amount, const BigIntArray *denom,
     return ok ? 1 : 0;
 }
 
+// Exhaustive O(n^2) nearest-change solver with at most two pieces.
+// Exact for arbitrary-size amounts, even with stock and a two-piece minimum.
+// Equal covered amounts prefer a single piece over a pair.
+int solve_near_any_two_coins(const BigInt *amount, const BigIntArray *denom,
+                             const BigIntArray *stock, std::size_t minimum,
+                             BigInt *covered, BigIntArray *result) {
+    if (!amount || !amount->digits || !denom || !denom->items ||
+        !denom->len || denom->len > 256 || !covered || !result ||
+        minimum > 2 ||
+        (stock && (!stock->items || stock->len != denom->len)))
+        return 0;
+    ManagedBig zero("0"), one("1"), two("2"), best("0");
+    std::size_t first = denom->len, second = denom->len;
+
+    const auto available = [&](std::size_t i, const BigInt *need) -> bool {
+        return denom->items[i].digits &&
+            !bigint_is_zero(&denom->items[i]) &&
+            (!stock || (stock->items[i].digits &&
+                bigint_compare(&stock->items[i], need) >= 0));
+    };
+    if (minimum <= 1)
+        for (std::size_t i = 0; i < denom->len; ++i)
+            if (available(i, &one.number) &&
+                bigint_compare(&denom->items[i], amount) <= 0 &&
+                bigint_compare(&denom->items[i], &best.number) > 0) {
+                if (!bigint_set(&best.number, &denom->items[i])) return 0;
+                first = i; second = denom->len;
+            }
+
+    for (std::size_t i = 0; i < denom->len; ++i) {
+        if (!available(i, &one.number)) continue;
+        for (std::size_t j = i; j < denom->len; ++j) {
+            if (!available(j, i == j ? &two.number : &one.number)) continue;
+            ManagedBig sum;
+            if (!bigint_add(&denom->items[i], &denom->items[j], &sum.number))
+                return 0;
+            if (bigint_compare(&sum.number, amount) <= 0 &&
+                bigint_compare(&sum.number, &best.number) > 0) {
+                if (!bigint_set(&best.number, &sum.number)) return 0;
+                first = i; second = j;
+            }
+        }
+    }
+    if (first == denom->len || !bigint_array_create(result, denom->len))
+        return 0;
+    bool ok = true;
+    for (std::size_t i = 0; i < denom->len && ok; ++i) {
+        const BigInt *quantity = first == i && second == i ? &two.number
+            : first == i || second == i ? &one.number : &zero.number;
+        ok = bigint_array_set(result, i, quantity);
+    }
+    if (ok) ok = bigint_set(covered, &best.number);
+    if (!ok) bigint_array_free(result);
+    return ok ? 1 : 0;
+}
+
 int calcular_cambio_cercano_con_rango(const BigInt *m, const BigIntArray *d, std::size_t lo, std::size_t hi, BigInt *covered, BigIntArray *s) {
     if (lo <= 1 && hi == 1)
         return solve_near_any_one_coin(m,d,nullptr,covered,s);
     if (d && d->len == 1)
         return solve_near_single_big(m,d,nullptr,lo,hi,covered,s);
+    if (hi == 2 && lo <= 2 && d && d->len <= 256)
+        return solve_near_any_two_coins(m,d,nullptr,lo,covered,s);
     std::size_t shortAmount=0;
     if (lo==0 && hi==std::numeric_limits<std::size_t>::max() &&
         !to_size(m,kMaxAmount,&shortAmount)) {
@@ -1130,6 +1188,8 @@ int calcular_cambio_cercano_stock_con_rango(const BigInt *m, const BigIntArray *
         return solve_near_any_one_coin(m,d,st,covered,s);
     if (d && d->len == 1)
         return solve_near_single_big(m,d,st,lo,hi,covered,s);
+    if (hi == 2 && lo <= 2 && d && d->len <= 256)
+        return solve_near_any_two_coins(m,d,st,lo,covered,s);
     std::size_t small=0;
     if (!to_size(m,kMaxAmount,&small)) {
         int sparse=solve_large_sparse(m,d,st,lo,hi,s,covered);
